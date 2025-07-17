@@ -1,5 +1,5 @@
 eeglab; % launch EEGLAB
-dataset_path = '/Users/vickyxu/Desktop/B2S/B2S-EEG-Analysis/datasets';
+dataset_path = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/EEG/datasets';
 
 EEG = pop_loadset('filename', 'dipfit_brain_only_voice_seg_marked.set', 'filepath', dataset_path);
 [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);

@@ -1,7 +1,7 @@
 % Preprocessing
 
 eeglab; % launch EEGLAB
-dataset_path = '/Users/vickyxu/Desktop/B2S/B2S-EEG-Analysis/datasets';
+dataset_path = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/EEG/datasets';
 
 SPEECH_TYPE = 'im';
 %% Import/load dataset
@@ -386,6 +386,11 @@ eeglab('redraw'); % refresh GUI
 %% Epoch
 
 % speech/overt
+
+% mark non-brain
+% ICs_to_remove = [1,4,5,11,12,13,15:20,22,23];
+% EEG.reject.gcompreject(ICs_to_remove) = 1;
+
 % EEG = pop_epoch( EEG, {  'EVNT_STIM_    _giSP_[]_ECI TCP-IP 55513'...
 %                          'EVNT_STIM_    _guSP_[]_ECI TCP-IP 55513'...
 %                          'EVNT_STIM_    _miSP_[]_ECI TCP-IP 55513'...
@@ -400,7 +405,7 @@ eeglab('redraw'); % refresh GUI
 % filename = 'pilot_sp_cleaned_2ndICA_dipfit_voice_seg_marked_dipfit_epoched.set';
 % EEG = pop_saveset(EEG, 'filename', filename, 'filepath', dataset_path);
 
-% covert
+% imagined/covert
 
 % mark non-brain
 ICs_to_ignore = [5,8,10,11,13,15,17,19:22];
@@ -420,3 +425,83 @@ EEG = pop_epoch( EEG, {  'EVNT_STIM_    _giIM_[]_ECI TCP-IP 55513'...
 % save to disk
 filename = [setname, '.set'];
 EEG = pop_saveset(EEG, 'filename', filename, 'filepath', dataset_path);
+
+
+%% Compute voice onset and offset relative mean time (overt dataset only)
+
+nEpochs = length(EEG.epoch);
+onset_latencies  = nan(1, nEpochs);
+offset_latencies = nan(1, nEpochs);
+cond_labels = {'giSP', 'guSP', 'miSP', 'muSP', 'siSP', 'suSP'};
+
+% Initialize condition-specific latency storage
+cond_onsets  = containers.Map(cond_labels, repmat({[]}, size(cond_labels)));
+cond_offsets = containers.Map(cond_labels, repmat({[]}, size(cond_labels)));
+
+for i = 1:nEpochs
+    etype  = EEG.epoch(i).eventtype;
+    elat   = EEG.epoch(i).eventlatency;
+    elabel = EEG.epoch(i).eventlabel;
+
+    % Convert to cell arrays if needed
+    if ~iscell(etype),  etype  = {etype};  end
+    if ~iscell(elat),   elat   = {elat};   end
+    if ~iscell(elabel), elabel = {elabel}; end
+
+    % Get indices for 'onset' and 'offset'
+    onset_idx  = strcmp(etype, 'onset');
+    offset_idx = strcmp(etype, 'offset');
+
+    % Save latencies
+    if any(onset_idx)
+        onset_latencies(i) = elat{onset_idx};
+    end
+    if any(offset_idx)
+        offset_latencies(i) = elat{offset_idx};
+    end
+
+    % Determine condition label (assumes only one condition label per epoch)
+    cond_match = intersect(elabel, cond_labels);
+    if ~isempty(cond_match)
+        label = cond_match{1};
+        if any(onset_idx)
+            cond_onsets(label) = [cond_onsets(label), elat{onset_idx}];
+        end
+        if any(offset_idx)
+            cond_offsets(label) = [cond_offsets(label), elat{offset_idx}];
+        end
+    end
+end
+
+% ---- Overall Stats ----
+fprintf('--- Overall Latency Statistics ---\n');
+fprintf('Onset:  Mean = %.2f ms, Min = %.2f ms, Max = %.2f ms\n', ...
+    mean(onset_latencies, 'omitnan'), min(onset_latencies, [], 'omitnan'), max(onset_latencies, [], 'omitnan'));
+fprintf('Offset: Mean = %.2f ms, Min = %.2f ms, Max = %.2f ms\n', ...
+    mean(offset_latencies, 'omitnan'), min(offset_latencies, [], 'omitnan'), max(offset_latencies, [], 'omitnan'));
+
+% ---- Per-Condition Stats ----
+fprintf('\n--- Per-Condition Latency Statistics ---\n');
+for k = 1:length(cond_labels)
+    label = cond_labels{k};
+    onsets  = cond_onsets(label);
+    offsets = cond_offsets(label);
+
+    fprintf('%s:\n', label);
+    if ~isempty(onsets)
+        fprintf('  Onset:  Mean = %.2f ms, Min = %.2f, Max = %.2f\n', ...
+            mean(onsets), min(onsets), max(onsets));
+    else
+        fprintf('  Onset:  No data\n');
+    end
+    if ~isempty(offsets)
+        fprintf('  Offset: Mean = %.2f ms, Min = %.2f, Max = %.2f\n', ...
+            mean(offsets), min(offsets), max(offsets));
+    else
+        fprintf('  Offset: No data\n');
+    end
+end
+
+%% 
+
+save('speech_onset_offset.mat', 'onset_latencies', 'offset_latencies');

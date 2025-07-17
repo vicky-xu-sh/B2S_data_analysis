@@ -1,9 +1,9 @@
 % Time-frequency analysis
 
 eeglab; % launch EEGLAB
-dataset_path = '/Users/vickyxu/Desktop/B2S/B2S-EEG-Analysis/datasets';
+dataset_path = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/EEG/datasets';
 
-%% Load cleaned and epoched dataset
+%% Load cleaned and epoched dataset (Overt dataset)
 
 filename = 'pilot_sp_cleaned_2ndICA_dipfit_voice_seg_marked_dipfit_epoched.set';
 EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
@@ -27,6 +27,16 @@ filename = 'pilot_im_cleaned_2ndICA_dipole_fit_epoched.set';
 EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
 % updates data structure
 [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
+
+eeglab redraw; % refresh GUI
+
+% load the seperated datasets 
+filenames = ["im_gi.set", "im_gu.set", "im_mi.set", "im_mu.set", "im_si.set", "im_su.set"];
+for i = 1:6
+    filename = char(filenames(i));
+    EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
+    [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
+end
 
 eeglab redraw; % refresh GUI
 
@@ -131,29 +141,6 @@ figure; pop_newtimef( EEG, 0, comp_num, [-500  1498], [8] , 'topovec', EEG.icawi
     'caption', 'IC 2 high-gamma band ERSP padratio 2, p<0.05 FDR corrected, single-trial norm + STD baseline norm', ...
     'basenorm', 'on', 'trialbase', 'full'); 
 
-%% 
-
-comp_num = 8;
-
-freqs = exp(linspace(log(4), log(185), 100));
-
-% Construct cycles vector matched to freqs
-cycles = zeros(size(freqs));
-for i = 1:length(freqs)
-    if freqs(i) <= 45
-        % linear scale from 1 to 8 in the lower part
-        cycles(i) = 1 + (8 - 1) * (log(freqs(i)) - log(4)) / (log(45) - log(4));
-    else
-        cycles(i) = 8;
-    end
-end
-
-figure; pop_newtimef( EEG, 0, comp_num, [-500  1498], cycles, 'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
-    'baseline',[0], 'freqs', freqs, ...
-    'freqscale', 'log', 'ntimesout', 200, ...
-    'caption', 'IC 8 ERSP, single-trial norm + STD baseline norm', ...
-    'basenorm', 'on', 'trialbase', 'full'); 
-
 
 %% calculate icaact for each dataset
 
@@ -165,8 +152,9 @@ end
 
 %% Generate ERSP plots for all ICs and CV conditions
 
-% ICs = [2,3,6:10,14,21]; % speech
-ICs = [1:4,6,7,9,12,14,16,18]; % covert
+% ICs = [2,3,6:10,14,21]; % spoken/overt
+% ICs = [1:4,6,7,9,12,14,16,18]; % covert
+ICs = [9];
 
 freqs = exp(linspace(log(4), log(185), 100));
 
@@ -199,8 +187,7 @@ for k = 1:length(ICs)
     
         subplot(nrows, ncols, i-1);  % choose subplot location
 
-        % 'mcorrect', 'fdr', 'alpha', 0.05, % if using statistical testing
-        % fdr correction
+        % 'mcorrect', 'fdr', 'alpha', 0.05, % if using statistical testing fdr correction
         newtimef( EEG.icaact(comp_num, :, :), EEG.pnts, [-500  1498], EEG.srate, cycles, ...
             'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
             'baseline',0, 'freqs', freqs, ... 
@@ -216,7 +203,8 @@ end
 %% Save ERSP for each syllables
 
 % ICs = [2,3,6:10,14,21]; % speech
-ICs = [1:4,6,7]; % covert
+% ICs = [1:4,6,7,9,12,14,16,18]; % covert
+ICs = [7,8];
 
 freqs = exp(linspace(log(4), log(185), 100));
 
@@ -242,7 +230,7 @@ for k = 1:length(ICs)
         EEG = ALLEEG(i);
         [ersp,itc,powbase,times,freqs,erspboot,itcboot, tfdata] = newtimef( EEG.icaact(comp_num, :, :), EEG.pnts, [-500  1498], EEG.srate, cycles, ...
             'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
-            'baseline',0, 'freqs', freqs, ... 
+            'baseline',[-450 0], 'freqs', freqs, ... 
             'freqscale', 'log', 'plotphase', 'off', 'ntimesout', 200, ...
             'plotitc', 'off', 'plotersp', 'off', ...
             'basenorm', 'on', 'trialbase', 'full'); 
@@ -257,7 +245,7 @@ end
 function plot_band_power_all(all_ersp, all_times, freqs, comp_num)
 % Plot band power curves across all CV syllables for theta, alpha, beta, gamma, and high gamma
 
-theta_band      = [4 7];
+theta_band      = [4 8];
 alpha_band      = [8 12];
 beta_band       = [13 30];
 gamma_band      = [30 75];
@@ -384,11 +372,30 @@ for b = 1:nBands
     end
 end
 
+%% Get trial class labels
+
+nEpochs = length(EEG.epoch);
+
+classes = {'gi', 'gu', 'mi', 'mu', 'si', 'su'};
+labels = nan(1, nEpochs);
+
+for i = 1:nEpochs
+    etype = EEG.epoch(i).eventtype;
+
+    if iscell(etype)
+        % get class labels for the trials
+        cond_idx = find(contains(etype, 'EVNT_STIM_'));
+        cond_str = etype{cond_idx};
+        class_match_idx = find(cellfun(@(c) contains(cond_str, c), classes));
+        labels(i) = class_match_idx;
+    end
+end
+
 
 %% Save the time-frequency data
 
-save('eeg_data_time_freq_z_power_labels.mat', 'z_power', 'labels');
-
+% save('sp_eeg_data_time_freq_z_power_labels.mat', 'z_power', 'labels');
+save('im_eeg_data_time_freq_z_power_labels.mat', 'z_power', 'labels');
 
 %% Find all voice onsets and labels for all trials
 
@@ -424,6 +431,10 @@ comp_num = 8;
 nClasses = 6;
 [comp, nFreqs, nTimes, nTrials] = size(z_power(comp_num,:,:,:));
 
+EEG = ALLEEG(1);
+fs = EEG.srate;
+times = EEG.times;
+
 class_means = zeros(nFreqs, nTimes, nClasses);
 
 for c = 1:nClasses
@@ -434,6 +445,8 @@ end
 
 %time_range = [25 975];  % select time range to plot
 time_range = [1 length(times)];
+
+band_names = {'Theta', 'Alpha', 'Beta', 'Gamma', 'High Gamma'};
 
 % Base colors (dark versions)
 base_colors = [
