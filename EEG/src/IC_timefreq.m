@@ -507,3 +507,30 @@ end
 
 
 
+%% Phase and amplitube
+
+nBands   = length(narrowband_EEG);
+nTrials  = size(narrowband_EEG{1}.icaact, 3);
+nTimes   = size(narrowband_EEG{1}.icaact, 2);
+nComps   = size(narrowband_EEG{1}.icaact, 1);
+
+% Preallocate
+amp_data   = nan(nComps, nBands, nTimes, nTrials);   % amplitude envelope
+phase_data = nan(nComps, nBands, nTimes, nTrials);   % phase in radians
+
+for b = 1:nBands
+    data_band = narrowband_EEG{b}.icaact;  % [components x time x trials]
+
+    for c = 1:nComps
+        for tr = 1:nTrials
+            signal = squeeze(data_band(c, :, tr));    % [1 x time]
+            analytic = hilbert(signal);               % complex analytic signal
+
+            amp_data(c, b, :, tr)   = abs(analytic);   % amplitude
+            phase_data(c, b, :, tr) = angle(analytic); % phase
+        end
+    end
+end
+
+% Save to .mat
+save('im_IC_amp_phase.mat', 'amp_data', 'phase_data');
