@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 
 # Ignore system files
-.DS_Store
+**/.DS_Store
 Thumbs.db
 
 # Ignore .mat files

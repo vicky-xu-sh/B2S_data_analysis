@@ -3,20 +3,31 @@
 eeglab; % launch EEGLAB
 dataset_path = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/EEG/datasets';
 
+% CHANGE THIS
 SPEECH_TYPE = 'im';
+SUBJ = 'subj-01';
+SESS = 'sess-02';
+
+if SPEECH_TYPE == 'sp'
+    dataset_path = [dataset_path,'/',SUBJ,'/',SESS,'/spoken'];
+else 
+    dataset_path = [dataset_path,'/',SUBJ,'/',SESS,'/imagined'];
+end
+
 %% Import/load dataset
 
 % === Import mff and save as dataset (Only run this if not saved as dataset) ===
 % import mff and save as dataset
-EEG = pop_mffimport({'/Users/vickyxu/Desktop/B2S/Final_datafiles/B2S_Pilot1_Imagined2_20241119_024607.mff'},{'classid','code','description','label','mffkeys','name'},0,0);
-EEG.setname = ['pilot_',SPEECH_TYPE,'_raw'];
+raw_eeg_datafile = '/Users/vickyxu/Desktop/B2S/raw_EEG_data/subj-01/B2S_P01_Imagine_20250603_105343.mff';
+EEG = pop_mffimport({raw_eeg_datafile},{'classid','code','description','label','mffkeys','name'},0,0);
+EEG.setname = [SUBJ,'_',SESS,'_pilot_',SPEECH_TYPE,'_raw'];
 filename = [EEG.setname, '.set'];
-EEG = pop_saveset(EEG, 'filename', filename, 'filepath', '/Users/vickyxu/Desktop/B2S/B2S-EEG-Analysis/datasets');
+EEG = pop_saveset(EEG, 'filename', filename, 'filepath', dataset_path);
 eeglab redraw; % refresh GUI
 EEG_orig = EEG; % keep a copy of the original
 
-% % === Load the raw dataset ===
-% filename = ['pilot_',SPEECH_TYPE,'_raw.set'];
+% === Load the raw dataset ===
+% filename = [SUBJ,'_',SESS,'_pilot_',SPEECH_TYPE,'_raw.set'];
 % EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
 % % updates data structure
 % [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
@@ -92,7 +103,7 @@ pop_spectopo(EEG, 1, ...
     'electrodes','off');
 
 % save set
-setname = ['pilot_', SPEECH_TYPE, '_raw_',num2str(hp_cutoff),'hz_hp_badchan_removed'];
+setname = [SUBJ,'_',SESS,'_pilot_', SPEECH_TYPE, '_raw_',num2str(hp_cutoff),'hz_hp_badchan_removed'];
 filename = [setname, '.set'];
 [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET+1,...
     'setname',setname, ...
@@ -107,18 +118,11 @@ EEG = pop_resample( EEG, 500);
 
 %% Manually inpspect the data and reject bad data segments
 
-% OVERT (SPOKEN DATA)
-% Aggressive rejection (some trial samples are removed)
-% EEG = eeg_eegrej( EEG, [11 277;26672 27449;75704 76504;83332 84133;119318 120017;134020 134706;139461 139999;156043 156609;163150 163665;181993 182452;190899 191468;234690 235274]);
-
-% Only reject beginning and end of data recording
-% EEG = eeg_eegrej( EEG, [11 277; 234690 235274]);
-
-% SAVE DATASET AFTER REJECTION
+% Stack the channels to easily spot bad data segments
 
 %% Define PCA function
 
-function run_PCA(EEG)
+function n_pca = run_PCA(EEG)
 % Reshape EEG data to 2D (channels x time)
 data = double(EEG.data);
 data_2d = reshape(data, EEG.nbchan, []);
@@ -134,8 +138,8 @@ cumulative_explained = cumsum(explained);
 n_pca = find(cumulative_explained >= 0.99, 1);
 fprintf('Number of PCs that explain 99%% variance: %d\n', n_pca);
 
-n_pca = find(cumulative_explained >= 0.999, 1);
-fprintf('Number of PCs that explain 99.9%% variance: %d\n', n_pca);
+n_pca_999 = find(cumulative_explained >= 0.999, 1);
+fprintf('Number of PCs that explain 99.9%% variance: %d\n', n_pca_999);
 
 % Plot cumulative explained variance
 figure;
@@ -153,7 +157,7 @@ end
 
 %% Run PCA to get num PCs that explain 99% var
 
-run_PCA(EEG);
+n_pca = run_PCA(EEG);
 
 %% Run ICA (AMICA) 
 
@@ -163,8 +167,8 @@ numprocs = 1;       % # of nodes (default = 1)
 max_threads = 4;    % # of threads per node
 num_models = 1;     % # of models of mixture ICA
 max_iter = 2000;    % max number of learning steps
-% ===== EDIT THIS PARAMETER ==== %
-pcakeep = 74;       % EDIT NUM of PCs to keep
+% ===== EDIT THIS PARAMETER IF NEEDED ==== %
+pcakeep = n_pca;       % EDIT NUM of PCs to keep
 
 % run amica
 outdir = [ pwd filesep 'amicaouttmp' filesep ];
@@ -180,7 +184,7 @@ EEG.icawinv = pinv(EEG.icaweights * EEG.icasphere);
 EEG.icachansind = 1:EEG.nbchan;  % assuming all channels used
 
 % save set
-setname = ['pilot_', SPEECH_TYPE, '_raw_',num2str(hp_cutoff),'hz_hp_badchan_removed_reref_resampled_seg_removed_PCA',num2str(pcakeep),'_AMICA'];
+setname = [SUBJ,'_',SESS,'_pilot_', SPEECH_TYPE, '_raw_',num2str(hp_cutoff),'hz_hp_badchan_removed_reref_resampled_seg_removed_PCA',num2str(pcakeep),'_AMICA'];
 filename = [setname, '.set'];
 [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET+1,...
     'setname',setname, ...
@@ -221,14 +225,23 @@ end
 EEG = pop_reref( EEG, []);
 EEG = pop_resample( EEG, 500);
 
-% remove the same bad data segments
+% Remove the same bad data segments; GET FROM HISTORY
+% CHANGE THIS
 
 % OVERT/SPOKEN DATASET
+% subj-01, sess-01
 % EEG = eeg_eegrej( EEG, [11 277; 234690 235274]);
 % EEG = eeg_eegrej( EEG, [11 277;26672 27449;75704 76504;83332 84133;119318 120017;134020 134706;139461 139999;156043 156609;163150 163665;181993 182452;190899 191468;234690 235274]);
 
+% subj-01, sess-02
+% EEG = eeg_eegrej( EEG, [12650 14210;164692 165299;238172 238382]);
+
 % COVERT/IMAGINED DATASET
-EEG = eeg_eegrej( EEG, [1 427;237514 238432]);
+% subj-01, sess-01
+% EEG = eeg_eegrej( EEG, [1 427;237514 238432]);
+
+% subj-01, sess-02
+EEG = eeg_eegrej( EEG, [4 177;52445 53406;63556 64031;229668 230084]);
 
 %% Transfer ICA weights to 1-200Hz dataset for analysis
 
@@ -253,7 +266,7 @@ EEG = pop_iclabel(EEG, 'lite');
 % view components
 pop_viewprops(EEG, 0, 1:size(EEG.icaweights,1), {'freqrange' [2 200]});
 
-setname = ['pilot_', SPEECH_TYPE, '_bp_1_200hz_bad_data_removed_full_transferred_ICs'];
+setname = [SUBJ,'_',SESS,'_pilot_', SPEECH_TYPE, '_bp_1_200hz_bad_data_removed_full_transferred_ICs'];
 filename = [setname, '.set'];
 [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET+1,...
     'setname',setname, ...
@@ -300,7 +313,7 @@ pop_selectcomps(EEG, [1:size(EEG.icaweights,1)] );
 %% 
 
 % save set
-setname = ['pilot_', SPEECH_TYPE, '_bp_1_200hz_bad_data_removed_full_transferred_ICs_mark_non_brain'];
+setname = [SUBJ,'_',SESS,'_pilot_', SPEECH_TYPE, '_bp_1_200hz_bad_data_removed_full_transferred_ICs_mark_non_brain'];
 filename = [setname, '.set'];
 [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET+1,...
     'setname',setname, ...
@@ -315,6 +328,7 @@ EEG = pop_subcomp(EEG, [], 1);
 %% Interpolate removed bad channels and mark Nz/RPA/LPA channels
 
 EEG = pop_interp(EEG, EEG_orig.chanlocs, 'spherical');
+% probably needs to be changed according to real channel locations
 EEG = pop_chanedit(EEG, 'changefield',{258,'labels','Nz'},'changefield',{260,'labels','RPA'},'changefield',{259,'labels','LPA'});
 [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG, CURRENTSET);
 
@@ -325,7 +339,7 @@ EEG = pop_reref( EEG, []);
 
 %% Run PCA to determine # PCs to keep
 
-run_PCA(EEG);
+n_pca = run_PCA(EEG);
 
 %% Second ICA run
 
@@ -333,8 +347,8 @@ numprocs = 1;       % # of nodes (default = 1)
 max_threads = 4;    % # of threads per node
 num_models = 1;     % # of models of mixture ICA
 max_iter = 2000;    % max number of learning steps
-% ===== EDIT THIS PARAMETER ==== %
-pcakeep = 22;       % EDIT NUM of PCs to keep
+% ===== EDIT THIS PARAMETER IF NEEDED ==== %
+pcakeep = n_pca;       % EDIT NUM of PCs to keep
 
 % run amica
 outdir = [ pwd filesep 'amicaouttmp' filesep ];
@@ -355,7 +369,7 @@ EEG = pop_iclabel(EEG, 'default');
 pop_viewprops(EEG, 0, 1:size(EEG.icaweights,1), {'freqrange' [2 200]});
 
 %% save
-setname = ['pilot_', SPEECH_TYPE, '_bp_1_200hz_bad_data_removed_cleaned_interpolated_2ndICA'];
+setname = [SUBJ,'_',SESS,'_pilot_', SPEECH_TYPE, '_bp_1_200hz_bad_data_removed_cleaned_interpolated_2ndICA'];
 filename = [setname, '.set'];
 [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET+1,...
     'setname',setname, ...
@@ -365,17 +379,20 @@ eeglab('redraw'); % refresh GUI
 
 %% DIPFIT
 
+% Standard template
 EEG = pop_dipfit_settings( EEG, 'hdmfile','standard_vol.mat','mrifile','standard_mri.mat',...
                            'chanfile','standard_1005.elc','coordformat','MNI','coord_transform',...
                            [-0.10139 -20.0657 -6.2232 0.12425 0.00053703 -1.5713 10.4359 10 10.0369] ,...
                            'chanomit',[17 32 33 43 44 48 49 56 57 63 68 73 81 88 94 99 107 113:6:125 126:128] );
 % coarse fit
-EEG = pop_dipfit_gridsearch(EEG, [1:22] ,[-85     -77.6087     -70.2174     -62.8261     -55.4348     -48.0435     -40.6522     -33.2609     -25.8696     -18.4783      -11.087     -3.69565      3.69565       11.087      18.4783      25.8696      33.2609      40.6522      48.0435      55.4348      62.8261      70.2174      77.6087           85] ,[-85     -77.6087     -70.2174     -62.8261     -55.4348     -48.0435     -40.6522     -33.2609     -25.8696     -18.4783      -11.087     -3.69565      3.69565       11.087      18.4783      25.8696      33.2609      40.6522      48.0435      55.4348      62.8261      70.2174      77.6087           85] ,[0      7.72727      15.4545      23.1818      30.9091      38.6364      46.3636      54.0909      61.8182      69.5455      77.2727           85] ,0.4);
+EEG = pop_dipfit_gridsearch(EEG, [1:15] ,[-85     -77.6087     -70.2174     -62.8261     -55.4348     -48.0435     -40.6522     -33.2609     -25.8696     -18.4783      -11.087     -3.69565      3.69565       11.087      18.4783      25.8696      33.2609      40.6522      48.0435      55.4348      62.8261      70.2174      77.6087           85] ,[-85     -77.6087     -70.2174     -62.8261     -55.4348     -48.0435     -40.6522     -33.2609     -25.8696     -18.4783      -11.087     -3.69565      3.69565       11.087      18.4783      25.8696      33.2609      40.6522      48.0435      55.4348      62.8261      70.2174      77.6087           85] ,[0      7.72727      15.4545      23.1818      30.9091      38.6364      46.3636      54.0909      61.8182      69.5455      77.2727           85] ,0.4);
 
-% run fine fit manually 
+% RUN FINE FIT MANUALLY
+
+%% 
 
 % save dipole fitted set
-setname = ['pilot_', SPEECH_TYPE, '_cleaned_2ndICA_dipole_fit'];
+setname = [SUBJ,'_',SESS,'_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_dipole_fit'];
 filename = [setname, '.set'];
 [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET+1,...
     'setname',setname, ...
@@ -385,12 +402,15 @@ eeglab('redraw'); % refresh GUI
 
 %% Epoch
 
-% speech/overt
-
-% mark non-brain
-% ICs_to_remove = [1,4,5,11,12,13,15:20,22,23];
+% % speech/overt
+% 
+% % mark non-brain
+% % CHANGE THIS
+% ICs_to_remove = [1,3,4,5,7,10,12,14];
 % EEG.reject.gcompreject(ICs_to_remove) = 1;
-
+% 
+% setname = [SUBJ,'_',SESS,'_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_dipole_fit_epoched'];
+% 
 % EEG = pop_epoch( EEG, {  'EVNT_STIM_    _giSP_[]_ECI TCP-IP 55513'...
 %                          'EVNT_STIM_    _guSP_[]_ECI TCP-IP 55513'...
 %                          'EVNT_STIM_    _miSP_[]_ECI TCP-IP 55513'...
@@ -398,20 +418,21 @@ eeglab('redraw'); % refresh GUI
 %                          'EVNT_STIM_    _siSP_[]_ECI TCP-IP 55513'...
 %                          'EVNT_STIM_    _suSP_[]_ECI TCP-IP 55513'  }, ...
 %                          [-0.5 1.5], ...
-%                          'newname', 'pilot_sp_cleaned_2ndICA_dipfit_voice_seg_marked_dipfit_epoched', ...
+%                          'newname', setname, ...
 %                          'epochinfo', 'yes');
 % 
 % % save to disk
-% filename = 'pilot_sp_cleaned_2ndICA_dipfit_voice_seg_marked_dipfit_epoched.set';
+% filename = [setname, '.set'];
 % EEG = pop_saveset(EEG, 'filename', filename, 'filepath', dataset_path);
 
 % imagined/covert
 
 % mark non-brain
-ICs_to_ignore = [5,8,10,11,13,15,17,19:22];
+% CHANGE THIS
+ICs_to_ignore = [1,3,7,8,12,15,17,18,19:23];
 EEG.reject.gcompreject(ICs_to_ignore) = 1;
 
-setname = ['pilot_', SPEECH_TYPE, '_cleaned_2ndICA_dipole_fit_epoched'];
+setname = [SUBJ,'_',SESS,'_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_dipole_fit_epoched'];
 EEG = pop_epoch( EEG, {  'EVNT_STIM_    _giIM_[]_ECI TCP-IP 55513'...
                          'EVNT_STIM_    _guIM_[]_ECI TCP-IP 55513'...
                          'EVNT_STIM_    _miIM_[]_ECI TCP-IP 55513'...
@@ -502,6 +523,6 @@ for k = 1:length(cond_labels)
     end
 end
 
-%% 
+%% Save speech onset offset for overt dataset
 
 save('speech_onset_offset.mat', 'onset_latencies', 'offset_latencies');
