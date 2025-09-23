@@ -3,11 +3,15 @@
 eeglab; % launch EEGLAB
 dataset_path = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/EEG/datasets';
 
-SPEECH_TYPE = 'sp';
+SPEECH_TYPE = 'im';
 SUBJ = 'subj-01';
 SESS = 'sess-02';
 
-dataset_path = [dataset_path,'/',SUBJ,'/',SESS];
+if SPEECH_TYPE == 'sp'
+    dataset_path = [dataset_path,'/',SUBJ,'/',SESS,'/spoken'];
+else 
+    dataset_path = [dataset_path,'/',SUBJ,'/',SESS,'/imagined'];
+end
 
 %% Load cleaned and epoched dataset (Overt dataset)
 
@@ -32,22 +36,23 @@ eeglab redraw; % refresh GUI
 
 %% Covert dataset
 
-filename = 'pilot_im_cleaned_2ndICA_dipole_fit_epoched.set';
+setname = [SUBJ,'_',SESS,'_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_dipole_fit_epoched'];
+filename = [setname,'.set'];
 EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
 % updates data structure
 [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
 
 eeglab redraw; % refresh GUI
 
-% load the seperated datasets 
-filenames = ["im_gi.set", "im_gu.set", "im_mi.set", "im_mu.set", "im_si.set", "im_su.set"];
-for i = 1:6
-    filename = char(filenames(i));
-    EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
-    [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
-end
-
-eeglab redraw; % refresh GUI
+% % load the seperated datasets 
+% filenames = ["im_gi.set", "im_gu.set", "im_mi.set", "im_mu.set", "im_si.set", "im_su.set"];
+% for i = 1:6
+%     filename = char(filenames(i));
+%     EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
+%     [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
+% end
+% 
+% eeglab redraw; % refresh GUI
 
 %% Save each syllable condition as seperate datasets (if not already)
 
@@ -215,9 +220,10 @@ end
 %% Save ERSP for each syllables
 
 % CHANGE THIS
-% ICs = [2,3,6:10,14,21]; % sess01 speech
-% ICs = [1:4,6,7,9,12,14,16,18]; % sess01 covert
-ICs = [6,8,9,11,13,15];
+% ICs = [2,3,6:10,14,21]; % sess-01 overt
+% ICs = [1:4,6,7,9,12,14,16,18]; % sess-01 covert
+% ICs = [6,8,9,11,13,15]; % sess-02 overt
+ICs = [2,4,5,6,9,11,13];
 
 freqs = exp(linspace(log(4), log(185), 100));
 
@@ -410,6 +416,12 @@ end
 filename = [SUBJ,'_',SESS,'_', SPEECH_TYPE, '_eeg_data_time_freq_z_power_labels.mat'];
 save(filename, 'z_power', 'labels');
 
+%% Save scalp topologies (icawinv)
+
+% icawinv: 257 * #ICs
+icawinv = ALLEEG(1).icawinv;
+filename = [SUBJ,'_',SESS,'_', SPEECH_TYPE, '_icawinv.mat'];
+save(filename, 'icawinv');
 %% Find all voice onsets and labels for all trials
 
 % nEpochs = length(EEG.epoch);
@@ -440,7 +452,7 @@ save(filename, 'z_power', 'labels');
 %% Sanity check - plot average power (to comapre with wavelet results)
 
 % CHANGE - SELECT IC TO PLOT
-comp_num = 15;
+comp_num = 2;
 
 nClasses = 6;
 [comp, nFreqs, nTimes, nTrials] = size(z_power(comp_num,:,:,:));
