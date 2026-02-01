@@ -21,9 +21,10 @@ pop_eegplot(EEG, 1, 1, 1);
 % Align with the cleaned EEG dataset
 EEG = pop_resample( EEG, 500);
 EEG = eeg_eegrej( EEG, [11 277;26672 27449;75704 76504;83332 84133;119318 120017;134020 134706;139461 139999;156043 156609;163150 163665;181993 182452;190899 191468;234690 235274]);
+%% 
 
 % Set output filename
-filename = '../../overt_audio_processing/speech_onset_offset_events_clean_EEG_aligned.txt';
+filename = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/overt_audio_processing/subj-02_sess-01/speech_onset_offset_events_clean_EEG_aligned.txt';
 fid = fopen(filename, 'w');
 
 % Loop through EEG events

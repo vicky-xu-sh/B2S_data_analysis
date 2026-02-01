@@ -3,8 +3,8 @@
 eeglab; % launch EEGLAB
 dataset_path = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/EEG/datasets';
 
-SPEECH_TYPE = 'im';
-SUBJ = 'subj-01';
+SPEECH_TYPE = 'sp';
+SUBJ = 'subj-02';
 SESS = 'sess-02';
 
 if SPEECH_TYPE == 'sp'
@@ -13,10 +13,9 @@ else
     dataset_path = [dataset_path,'/',SUBJ,'/',SESS,'/imagined'];
 end
 
-%% Load cleaned and epoched dataset (Overt dataset)
+%% Load cleaned and epoched dataset
 
-setname = [SUBJ,'_',SESS,'_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_dipole_fit_epoched'];
-%filename = 'pilot_sp_cleaned_2ndICA_dipfit_voice_seg_marked_dipfit_epoched.set';
+setname = [SUBJ,'_',SESS,'_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_epoched'];
 filename = [setname,'.set'];
 EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
 % updates data structure
@@ -24,35 +23,27 @@ EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
 
 eeglab redraw; % refresh GUI
 
-% % load the seperated datasets if exist 
-% filenames = ["sp_gi.set", "sp_gu.set", "sp_mi.set", "sp_mu.set", "sp_si.set", "sp_su.set"];
-% for i = 1:6
-%     filename = char(filenames(i));
-%     EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
-%     [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
-% end
-% 
-% eeglab redraw; % refresh GUI
+%% Load seperated overt datasets (if exists)
 
-%% Covert dataset
-
-setname = [SUBJ,'_',SESS,'_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_dipole_fit_epoched'];
-filename = [setname,'.set'];
-EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
-% updates data structure
-[ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
+filenames = ["sp_gi.set", "sp_gu.set", "sp_mi.set", "sp_mu.set", "sp_si.set", "sp_su.set"];
+for i = 1:6
+    filename = char(filenames(i));
+    EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
+    [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
+end
 
 eeglab redraw; % refresh GUI
 
-% % load the seperated datasets 
-% filenames = ["im_gi.set", "im_gu.set", "im_mi.set", "im_mu.set", "im_si.set", "im_su.set"];
-% for i = 1:6
-%     filename = char(filenames(i));
-%     EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
-%     [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
-% end
-% 
-% eeglab redraw; % refresh GUI
+%% Load seperated covert datasets (if exists)
+
+filenames = ["im_gi.set", "im_gu.set", "im_mi.set", "im_mu.set", "im_si.set", "im_su.set"];
+for i = 1:6
+    filename = char(filenames(i));
+    EEG = pop_loadset('filename', filename, 'filepath', dataset_path);
+    [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
+end
+
+eeglab redraw; % refresh GUI
 
 %% Save each syllable condition as seperate datasets (if not already)
 
@@ -123,42 +114,7 @@ EEG = pop_selectevent( EEG_all, 'type',{'EVNT_STIM_    _suIM_[]_ECI TCP-IP 55513
 eeglab redraw;
 
 
-%% Exploring different time-frequency parameters
-
-% EEG = EEG_all;
-% comp_num = 2;
-% figure; pop_newtimef( EEG, 0, comp_num, [-500  1498], [8] , 'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
-%     'baseline',[0], 'freqs', [85 175], ...
-%     'freqscale', 'log', 'plotphase', 'off', 'ntimesout', 400, 'padratio', 1, ...
-%     'caption', 'IC 2 high-gamma band ERSP 8-cycle wavelet, padratio 1');
-% 
-% figure; pop_newtimef( EEG, 0, comp_num, [-500  1498], [8] , 'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
-%     'baseline',[0], 'freqs', [85 175], ...
-%     'freqscale', 'log', 'plotphase', 'off', 'ntimesout', 400, 'padratio', 2, ...
-%     'caption', 'IC 2 high-gamma band ERSP padratio 2');
-% 
-% figure; pop_newtimef( EEG, 0, comp_num, [-500  1498], [8] , 'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
-%     'baseline',[0], 'alpha',0.05, 'freqs', [85 175], ...
-%     'mcorrect', 'fdr', 'freqscale', 'log', 'plotphase', 'off', 'ntimesout', 400, 'padratio', 2, ...
-%     'caption', 'IC 2 high-gamma band ERSP padratio 2, p<0.05 FDR corrected');
-% 
-% figure; pop_newtimef( EEG, 0, comp_num, [-500  1498], [8] , 'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
-%     'baseline',[0], 'alpha',0.05, 'freqs', [85 175], ...
-%     'mcorrect', 'fdr', 'freqscale', 'log', 'plotphase', 'off', 'ntimesout', 400, 'padratio', 2, ...
-%     'caption', 'IC 2 high-gamma band ERSP padratio 2, p<0.05 FDR corrected, STD baseline normalization', ...
-%     'basenorm', 'on'); % STD baseline (z-score)
-% 
-% % 'trialbase' 'full' is an option that perform single trial normalization (or simple division based on the 
-% % 'basenorm' input over the full trial length before performing standard baseline removal. It has been
-% % shown to be less sensitive to noisy trials.
-% figure; pop_newtimef( EEG, 0, comp_num, [-500  1498], [8] , 'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
-%     'baseline',[0], 'alpha',0.05, 'freqs', [85 175], ...
-%     'mcorrect', 'fdr', 'freqscale', 'log', 'plotphase', 'off', 'ntimesout', 400, 'padratio', 2, ...
-%     'caption', 'IC 2 high-gamma band ERSP padratio 2, p<0.05 FDR corrected, single-trial norm + STD baseline norm', ...
-%     'basenorm', 'on', 'trialbase', 'full'); 
-
-
-%% calculate icaact for each dataset
+%% Calculate icaact for each dataset
 
 for i = 1:7
     ALLEEG(i).icaact = (ALLEEG(i).icaweights * ALLEEG(i).icasphere) * ALLEEG(i).data(ALLEEG(i).icachansind, :);
@@ -168,64 +124,77 @@ end
 
 %% Generate ERSP plots for all ICs and CV conditions
 
-% % CHANGE THIS
-% % ICs = [2,3,6:10,14,21]; % sess01 spoken/overt
-% % ICs = [1:4,6,7,9,12,14,16,18]; %sess01 covert
-% ICs = [6,8,9,11,13,15];
-% 
-% freqs = exp(linspace(log(4), log(185), 100));
-% 
-% % Construct cycles vector matched to freqs
-% cycles = zeros(size(freqs));
-% for i = 1:length(freqs)
-%     if freqs(i) <= 45
-%         % linear scale from 1 to 8 in the lower part
-%         cycles(i) = 1 + (8 - 1) * (log(freqs(i)) - log(4)) / (log(45) - log(4));
-%     else
-%         cycles(i) = 8;
-%     end
-% end
-% 
-% syllables = ["all", "gi", "gu", "mi", "mu", "si", "su"];
-% 
-% nrows = 3;
-% ncols = 2;
-% 
-% for k = 1:length(ICs)
-%     comp_num = ICs(k);
-% 
-%     figure;
-%     for i = 2:7
-%         curr_cv = syllables(i);
-%         caption = sprintf('IC %d broadband ERSP p<0.05 FDR corrected, single-trial norm + STD baseline norm', comp_num);
-%         %caption = sprintf('IC %d broadband ERSP, single-trial norm + STD baseline norm', comp_num);
-%         titletext = sprintf('%s', curr_cv);
-%         EEG = ALLEEG(i);
-% 
-%         subplot(nrows, ncols, i-1);  % choose subplot location
-% 
-%         % 'mcorrect', 'fdr', 'alpha', 0.05, % if using statistical testing fdr correction
-%         newtimef( EEG.icaact(comp_num, :, :), EEG.pnts, [-500  1498], EEG.srate, cycles, ...
-%             'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
-%             'baseline',0, 'freqs', freqs, ... 
-%             'plotphase', 'on', 'plotitc', 'off', ...
-%             'freqscale', 'log', 'ntimesout', 200, ...
-%             'title', titletext, 'caption', caption, ...
-%             'mcorrect', 'fdr', 'alpha', 0.05, ...
-%             'basenorm', 'on', 'trialbase', 'full'); 
-% 
-%     end
-% end
+% CHANGE THIS
+ICs = [3,10,12,14,15,20,24];
+
+freqs = exp(linspace(log(4), log(160), 100));
+
+% Construct cycles vector matched to freqs
+cycles = zeros(size(freqs));
+for i = 1:length(freqs)
+    if freqs(i) <= 45
+        % linear scale from 1 to 8 in the lower part
+        cycles(i) = 1 + (8 - 1) * (log(freqs(i)) - log(4)) / (log(45) - log(4));
+    else
+        cycles(i) = 8;
+    end
+end
+
+syllables = ["all", "gi", "gu", "mi", "mu", "si", "su"];
+
+nrows = 3;
+ncols = 2;
+
+for k = 1:length(ICs)
+    comp_num = ICs(k);
+
+    figure;
+    for i = 2:7
+        curr_cv = syllables(i);
+        caption = sprintf('IC %d broadband ERSP p<0.05 FDR corrected, single-trial norm + STD baseline norm', comp_num);
+        %caption = sprintf('IC %d broadband ERSP, single-trial norm + STD baseline norm', comp_num);
+        titletext = sprintf('%s', curr_cv);
+        EEG = ALLEEG(i);
+
+        subplot(nrows, ncols, i-1);  % choose subplot location
+
+        % 'mcorrect', 'fdr', 'alpha', 0.05, % if using statistical testing fdr correction
+        newtimef( EEG.icaact(comp_num, :, :), EEG.pnts, [-500  1498], EEG.srate, cycles, ...
+            'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
+            'baseline',0, 'freqs', freqs, ... 
+            'plotphase', 'on', 'plotitc', 'off', ...
+            'freqscale', 'log', 'ntimesout', 200, ...
+            'title', titletext, 'caption', caption, ...
+            'mcorrect', 'fdr', 'alpha', 0.05, ...
+            'basenorm', 'on', 'trialbase', 'full'); 
+
+    end
+end
 
 %% Save ERSP for each syllables
 
 % CHANGE THIS
-% ICs = [2,3,6:10,14,21]; % sess-01 overt
-% ICs = [1:4,6,7,9,12,14,16,18]; % sess-01 covert
-% ICs = [6,8,9,11,13,15]; % sess-02 overt
-ICs = [2,4,5,6,9,11,13];
+% ICs = [2,3,6:10,14,21]; % subj-01, sess-01 overt
+% ICs = [1:4,6,7,9,12,14,16,18]; % subj-01, sess-01 covert
+% ICs = [6,8,9,11,13,15]; % subj-01, sess-02 overt
+% ICs = [2,4,5,6,9,10,11,13];  % subj-01, sess-02 covert
 
-freqs = exp(linspace(log(4), log(185), 100));
+% ICs = [3,5,7,9,18,20,23];  % subj-02, sess-01 overt
+% ICs = [3,4,6,9,10,11,12,13,16,17,20,26]; % subj-02, sess-01 covert
+
+% ICs = [4,7,11,12,13,14,16]; % subj-03, sess-01 overt
+% ICs = [2,5,8:14]; %subj-03, sess-01 covert
+
+% ICs = [1,2,3,6,7,8:12,14,15,21]; % subj-04, sess-01 (11, 12, 14 might not
+% be important)
+
+% ICs = [3,10,12,14,15,20,24]; % subj-02, sess-02 overt
+ICs = [5,7,9,11,12,16,19]; % subj-02, sess-02 covert
+
+max_time_ms = 1498;
+% max_time_ms = 1798;
+
+freqs = exp(linspace(log(4), log(160), 100));
 
 % Construct cycles vector matched to freqs
 cycles = zeros(size(freqs));
@@ -247,7 +216,7 @@ for k = 1:length(ICs)
     comp_num = ICs(k);
     for i = 2:7
         EEG = ALLEEG(i);
-        [ersp,itc,powbase,times,freqs,erspboot,itcboot, tfdata] = newtimef( EEG.icaact(comp_num, :, :), EEG.pnts, [-500  1498], EEG.srate, cycles, ...
+        [ersp,itc,powbase,times,freqs,erspboot,itcboot, tfdata] = newtimef( EEG.icaact(comp_num, :, :), EEG.pnts, [-500  max_time_ms], EEG.srate, cycles, ...
             'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
             'baseline',[-450 0], 'freqs', freqs, ... 
             'freqscale', 'log', 'plotphase', 'off', 'ntimesout', 200, ...
@@ -268,7 +237,7 @@ theta_band      = [4 8];
 alpha_band      = [8 12];
 beta_band       = [13 30];
 gamma_band      = [30 75];
-high_gamma_band = [75 185];
+high_gamma_band = [75 160];
 
 bands = {theta_band, alpha_band, beta_band, gamma_band, high_gamma_band};
 band_names = {'Theta', 'Alpha', 'Beta', 'Gamma', 'High Gamma'};
@@ -336,7 +305,7 @@ theta_band      = [4 7];
 alpha_band      = [8 12];
 beta_band       = [13 30];
 gamma_band      = [30 75];
-high_gamma_band = [75 185];
+high_gamma_band = [75 160];
 
 bands = {theta_band, alpha_band, beta_band, gamma_band, high_gamma_band};
 band_names = {'Theta', 'Alpha', 'Beta', 'Gamma', 'High Gamma'};
@@ -391,7 +360,7 @@ for b = 1:nBands
     end
 end
 
-%% Get trial class labels
+% Get trial class labels
 
 nEpochs = length(EEG.epoch);
 
@@ -411,48 +380,25 @@ for i = 1:nEpochs
 end
 
 
-%% Save the time-frequency data
+% Save the time-frequency data
 
 filename = [SUBJ,'_',SESS,'_', SPEECH_TYPE, '_eeg_data_time_freq_z_power_labels.mat'];
 save(filename, 'z_power', 'labels');
 
 %% Save scalp topologies (icawinv)
 
-% icawinv: 257 * #ICs
-icawinv = ALLEEG(1).icawinv;
-filename = [SUBJ,'_',SESS,'_', SPEECH_TYPE, '_icawinv.mat'];
-save(filename, 'icawinv');
-%% Find all voice onsets and labels for all trials
-
-% nEpochs = length(EEG.epoch);
-% onset_latencies  = nan(1, nEpochs);
+% % NEED TO INTERPOLATE TO HAVE FULL HEAD!
 % 
-% classes = {'gi', 'gu', 'mi', 'mu', 'si', 'su'};
-% labels = nan(1, nEpochs);
-% 
-% for i = 1:nEpochs
-%     etype = EEG.epoch(i).eventtype;
-%     elat  = EEG.epoch(i).eventlatency;
-% 
-%     if iscell(etype)
-%         % get vector of onset latencies
-%         onset_idx  = strcmp(etype, 'onset'); 
-%         onset_latencies(i)  = elat{onset_idx};
-% 
-%         % get class labels for the trials
-%         cond_idx = find(contains(etype, 'EVNT_STIM_'));
-%         cond_str = etype{cond_idx};
-%         class_match_idx = find(cellfun(@(c) contains(cond_str, c), classes));
-%         labels(i) = class_match_idx;
-%     end
-% end
+% % icawinv: 257 * #ICs
+% icawinv = ALLEEG(1).icawinv;
+% filename = [SUBJ,'_',SESS,'_', SPEECH_TYPE, '_icawinv.mat'];
+% save(filename, 'icawinv');
 
 
-
-%% Sanity check - plot average power (to comapre with wavelet results)
+%% Sanity check - plot average power (to compare with wavelet results)
 
 % CHANGE - SELECT IC TO PLOT
-comp_num = 2;
+comp_num = 10;
 
 nClasses = 6;
 [comp, nFreqs, nTimes, nTrials] = size(z_power(comp_num,:,:,:));
@@ -509,6 +455,64 @@ end
 
 sgtitle(sprintf('Overt IC %d Band power comparison', comp_num));
 
+%% Exploring different time-frequency parameters
+
+% EEG = EEG_all;
+% comp_num = 2;
+% figure; pop_newtimef( EEG, 0, comp_num, [-500  1498], [8] , 'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
+%     'baseline',[0], 'freqs', [85 175], ...
+%     'freqscale', 'log', 'plotphase', 'off', 'ntimesout', 400, 'padratio', 1, ...
+%     'caption', 'IC 2 high-gamma band ERSP 8-cycle wavelet, padratio 1');
+% 
+% figure; pop_newtimef( EEG, 0, comp_num, [-500  1498], [8] , 'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
+%     'baseline',[0], 'freqs', [85 175], ...
+%     'freqscale', 'log', 'plotphase', 'off', 'ntimesout', 400, 'padratio', 2, ...
+%     'caption', 'IC 2 high-gamma band ERSP padratio 2');
+% 
+% figure; pop_newtimef( EEG, 0, comp_num, [-500  1498], [8] , 'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
+%     'baseline',[0], 'alpha',0.05, 'freqs', [85 175], ...
+%     'mcorrect', 'fdr', 'freqscale', 'log', 'plotphase', 'off', 'ntimesout', 400, 'padratio', 2, ...
+%     'caption', 'IC 2 high-gamma band ERSP padratio 2, p<0.05 FDR corrected');
+% 
+% figure; pop_newtimef( EEG, 0, comp_num, [-500  1498], [8] , 'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
+%     'baseline',[0], 'alpha',0.05, 'freqs', [85 175], ...
+%     'mcorrect', 'fdr', 'freqscale', 'log', 'plotphase', 'off', 'ntimesout', 400, 'padratio', 2, ...
+%     'caption', 'IC 2 high-gamma band ERSP padratio 2, p<0.05 FDR corrected, STD baseline normalization', ...
+%     'basenorm', 'on'); % STD baseline (z-score)
+% 
+% % 'trialbase' 'full' is an option that perform single trial normalization (or simple division based on the 
+% % 'basenorm' input over the full trial length before performing standard baseline removal. It has been
+% % shown to be less sensitive to noisy trials.
+% figure; pop_newtimef( EEG, 0, comp_num, [-500  1498], [8] , 'topovec', EEG.icawinv(:,comp_num), 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, ...
+%     'baseline',[0], 'alpha',0.05, 'freqs', [85 175], ...
+%     'mcorrect', 'fdr', 'freqscale', 'log', 'plotphase', 'off', 'ntimesout', 400, 'padratio', 2, ...
+%     'caption', 'IC 2 high-gamma band ERSP padratio 2, p<0.05 FDR corrected, single-trial norm + STD baseline norm', ...
+%     'basenorm', 'on', 'trialbase', 'full'); 
+
+%% Find all voice onsets and labels for all trials
+% 
+% nEpochs = length(EEG.epoch);
+% onset_latencies  = nan(1, nEpochs);
+% 
+% classes = {'gi', 'gu', 'mi', 'mu', 'si', 'su'};
+% labels = nan(1, nEpochs);
+% 
+% for i = 1:nEpochs
+%     etype = EEG.epoch(i).eventtype;
+%     elat  = EEG.epoch(i).eventlatency;
+% 
+%     if iscell(etype)
+%         % get vector of onset latencies
+%         onset_idx  = strcmp(etype, 'onset'); 
+%         onset_latencies(i)  = elat{onset_idx};
+% 
+%         % get class labels for the trials
+%         cond_idx = find(contains(etype, 'EVNT_STIM_'));
+%         cond_str = etype{cond_idx};
+%         class_match_idx = find(cellfun(@(c) contains(cond_str, c), classes));
+%         labels(i) = class_match_idx;
+%     end
+% end
 
 %% Try to plot power for each trials (using ERAPIMAGE)
 
@@ -532,32 +536,31 @@ sgtitle(sprintf('Overt IC %d Band power comparison', comp_num));
 % end
 
 
-
-%% Phase and amplitube
-
-nBands   = length(narrowband_EEG);
-nTrials  = size(narrowband_EEG{1}.icaact, 3);
-nTimes   = size(narrowband_EEG{1}.icaact, 2);
-nComps   = size(narrowband_EEG{1}.icaact, 1);
-
-% Preallocate
-amp_data   = nan(nComps, nBands, nTimes, nTrials);   % amplitude envelope
-phase_data = nan(nComps, nBands, nTimes, nTrials);   % phase in radians
-
-for b = 1:nBands
-    data_band = narrowband_EEG{b}.icaact;  % [components x time x trials]
-
-    for c = 1:nComps
-        for tr = 1:nTrials
-            signal = squeeze(data_band(c, :, tr));    % [1 x time]
-            analytic = hilbert(signal);               % complex analytic signal
-
-            amp_data(c, b, :, tr)   = abs(analytic);   % amplitude
-            phase_data(c, b, :, tr) = angle(analytic); % phase
-        end
-    end
-end
-
-% Save to .mat
-filename = [SUBJ,'_',SESS,'_', SPEECH_TYPE, '_IC_amp_phase.mat'];
-save(filename, 'amp_data', 'phase_data');
+%% Phase and amplitube analysis
+% 
+% nBands   = length(narrowband_EEG);
+% nTrials  = size(narrowband_EEG{1}.icaact, 3);
+% nTimes   = size(narrowband_EEG{1}.icaact, 2);
+% nComps   = size(narrowband_EEG{1}.icaact, 1);
+% 
+% % Preallocate
+% amp_data   = nan(nComps, nBands, nTimes, nTrials);   % amplitude envelope
+% phase_data = nan(nComps, nBands, nTimes, nTrials);   % phase in radians
+% 
+% for b = 1:nBands
+%     data_band = narrowband_EEG{b}.icaact;  % [components x time x trials]
+% 
+%     for c = 1:nComps
+%         for tr = 1:nTrials
+%             signal = squeeze(data_band(c, :, tr));    % [1 x time]
+%             analytic = hilbert(signal);               % complex analytic signal
+% 
+%             amp_data(c, b, :, tr)   = abs(analytic);   % amplitude
+%             phase_data(c, b, :, tr) = angle(analytic); % phase
+%         end
+%     end
+% end
+% 
+% % Save to .mat
+% filename = [SUBJ,'_',SESS,'_', SPEECH_TYPE, '_IC_amp_phase.mat'];
+% save(filename, 'amp_data', 'phase_data');
