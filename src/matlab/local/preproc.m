@@ -55,7 +55,7 @@ figure; topoplot([],EEG.chanlocs, 'style', 'blank',  'electrodes', 'labelpoint',
 figure;  title('Raw data power spectra');
 pop_spectopo(EEG, 1, ...
     [0 EEG.pnts], ...
-    'EEG' , 'freq', [20 50 100], ...
+    'EEG' , 'freq', [10 20 80], ...
     'freqrange',[0.1 200],...
     'electrodes','off');
 
@@ -90,7 +90,7 @@ EEG = pop_eegfiltnew(EEG, 'locutoff',178,'hicutoff',182,'revfilt',1);
 figure; title(sprintf('Power spectra after %d Hz high-pass and line noise removed',hp_cutoff));
 pop_spectopo(EEG, 1, ...
     [0 EEG.pnts], ...
-    'EEG' , 'freq', [20 50 100], ...
+    'EEG' , 'freq', [10 20 80], ...
     'freqrange',[0.1 200],...
     'electrodes','off');
 
@@ -118,14 +118,14 @@ figure;
 title('Power spectra after filtered and bad channels removed');
 pop_spectopo(EEG, 1, ...
     [0 EEG.pnts], ...
-    'EEG' , 'freq', [20 50 100], ...
+    'EEG' , 'freq', [10 20 80], ...
     'freqrange',[0.1 200],...
     'electrodes','off');
 
 %% 
 
 % save set
-setname = [SUBJ,'_pilot_', SPEECH_TYPE, '_raw_',num2str(hp_cutoff),'hz_hp_badchan_removed'];
+setname = [SUBJ,'_pilot_', SPEECH_TYPE, '_',num2str(hp_cutoff),'hz_hp_badchan_removed'];
 filename = [setname, '.set'];
 [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET+1,...
     'setname',setname, ...
@@ -138,9 +138,17 @@ eeglab('redraw'); % refresh GUI
 EEG = pop_reref( EEG, []);
 EEG = pop_resample( EEG, 500);
 
-%% Manually inpspect the data and reject bad data segments
+%% AUTOMATED BAD SEGMENT REJECTION (trim 1s from start and end)
 
-% Stack the channels to easily spot bad data segments
+fprintf('\n--- Trimming 1s from start and end ---\n');
+
+trim_samples = floor(1 * EEG.srate);   % 1 second in samples
+start_trim   = 1;
+end_trim     = EEG.pnts - trim_samples;
+
+EEG = eeg_eegrej(EEG, [start_trim, trim_samples; end_trim, EEG.pnts]);
+
+fprintf('Trimmed samples 1-%d (start) and %d-%d (end)\n', trim_samples, end_trim, EEG.pnts);
 
 %% Define PCA function
 
@@ -164,15 +172,8 @@ n_pca_999 = find(cumulative_explained >= 0.999, 1);
 fprintf('Number of PCs that explain 99.9%% variance: %d\n', n_pca_999);
 
 % For run 1, output 99.9% variance number of pcs if not enough 99% pcs, 
-% but cap at 80 components max
 if run == 1 && n_pca < 60 
     n_pca = n_pca_999;
-end
-if run == 1 && n_pca > 80
-    n_pca = 80;
-end
-if run == 2 % cap at 80 components for run 2 --> NEEDS CHANGES
-    n_pca = 80;
 end
 
 % Plot cumulative explained variance
@@ -191,8 +192,13 @@ end
 
 %% Run PCA to get num PCs that explain 99% (or 99.9%) var
 
-n_pca = run_PCA(EEG, 1);
-fprintf('\nn_pca for ICA run is set to: %d\n', n_pca);
+n_pca_run_1 = run_PCA(EEG, 1);
+
+if n_pca_run_1 > 90
+    n_pca_run_1 = 90; % cap at 90 to make sure k = 30 (k = num_samples/n_pca^2)
+end 
+
+fprintf('\nn_pca for ICA run is set to: %d\n', n_pca_run_1);
 
 %% Run ICA (AMICA) 
 
@@ -203,7 +209,7 @@ max_threads = 4;    % # of threads per node
 num_models = 1;     % # of models of mixture ICA
 max_iter = 3000;    % max number of learning steps
 % ===== EDIT THIS PARAMETER IF NEEDED ==== %
-pcakeep = n_pca;       % EDIT NUM of PCs to keep
+pcakeep = n_pca_run_1;       % EDIT NUM of PCs to keep
 
 % run amica
 outdir = [ pwd filesep 'amicaouttmp' filesep ];
@@ -220,7 +226,7 @@ EEG.icachansind = 1:EEG.nbchan;  % assuming all channels used
 %% 
 
 % save set
-setname = [SUBJ,'_pilot_', SPEECH_TYPE, '_raw_',num2str(hp_cutoff),'hz_hp_badchan_removed_reref_resampled_seg_removed_PCA',num2str(pcakeep),'_AMICA3000'];
+setname = [SUBJ,'_pilot_', SPEECH_TYPE, '_',num2str(hp_cutoff),'hz_hp_badchan_removed_reref_resampled_seg_removed_PCA',num2str(pcakeep),'_AMICA3000'];
 filename = [setname, '.set'];
 [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET+1,...
     'setname',setname, ...
@@ -356,10 +362,25 @@ eeglab('redraw'); % refresh GUI
 EEG = pop_subcomp(EEG, [], 1);
 
 
+%% 
+
+% save set
+setname = [SUBJ,'_pilot_', SPEECH_TYPE, '_bp_1_150hz_bad_data_removed_full_transferred_ICs_non_brain_removed'];
+filename = [setname, '.set'];
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET+1,...
+    'setname',setname, ...
+    'savenew',fullfile(dataset_path, filename), ...
+    'gui','off'); 
+eeglab('redraw'); % refresh GUI
+
+
 %% Run PCA 
 
-n_pca = run_PCA(EEG, 2);
-fprintf('\nn_pca for ICA run is set to: %d\n', n_pca);   % n_pca should set to 80
+run_PCA(EEG, 2);
+
+n_pca_run_2 = n_pca_run_1 - length(ICs_to_reject); % adjust PCA components to keep after IC rejection to maintain at least k = 30 (k = num_samples/n_pca^2)
+fprintf('\nn_pca for ICA run 2: %d\n', n_pca_run_2);
+
 
 %% Second ICA run
 
@@ -368,7 +389,7 @@ max_threads = 4;    % # of threads per node
 num_models = 1;     % # of models of mixture ICA
 max_iter = 3000;    % max number of learning steps
 % ===== EDIT THIS PARAMETER IF NEEDED ==== %
-pcakeep = n_pca;       % EDIT NUM of PCs to keep
+pcakeep = n_pca_run_2;       % EDIT NUM of PCs to keep
 
 % run amica
 outdir = [ pwd filesep 'amicaouttmp' filesep ];

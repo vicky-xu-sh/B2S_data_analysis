@@ -1,16 +1,54 @@
-# Ignore Python cache files
-__pycache__/
-*.pyc
+# ==========================================
+# DATA (Never track large datasets)
+# ==========================================
+data/**/*
 
-# Ignore system files
-**/.DS_Store
-Thumbs.db
+# BUT do not ignore the directories themselves
+!data/**/
 
-# Ignore .mat files
-*.mat
+# BUT do not ignore .gitkeep files
+!**/.gitkeep
 
-# Ignore audio files
+# EEG/Audio/MRI data
+*.set
+*.fdt
+*.mff
+*.sfp
+*.nii.gz
+*.TextGrid
 *.wav
+*.mp3
 
-# Ignore datasets
-./datasets
+# Processed Data
+*.mat
+*.npy
+*.npz
+*.pkl
+
+# ==========================================
+# HIGH PERFORMANCE COMPUTING (HPC/Slurm)
+# ==========================================
+# Ignore Slurm output and error logs
+*.out
+*.err
+
+# ==========================================
+# MATLAB
+# ==========================================
+# MATLAB metadata and autosaves
+*.asv
+*.mex*
+*.slxc
+
+# ==========================================
+# PYTHON 
+# ==========================================
+__pycache__/
+
+# ==========================================
+# SYSTEM / IDE
+# ==========================================
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
