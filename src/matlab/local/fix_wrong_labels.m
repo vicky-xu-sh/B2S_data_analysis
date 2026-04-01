@@ -1,6 +1,6 @@
 %% =========================================================================
 %  FIX WRONG EVENT LABELS (SP → IM)
-%  NOTE: subj-XX im dataset had stimulus events incorrectly marked as SP
+%  NOTE: subj-03 im dataset had stimulus events incorrectly marked as SP
 % ==========================================================================
 
 for i = 1:length(EEG.event)
