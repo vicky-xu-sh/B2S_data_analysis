@@ -57,6 +57,6 @@ echo "Input:  ${INPUT_DIR}/${INPUT_SET_NAME}.set"
 echo "Output: ${OUTPUT_DIR}/${OUTPUT_SET_NAME}.set"
 
 matlab -nodisplay -nosplash -nodesktop -r \
-    "try; run('/scratch/st-ssfels-1/vickywx/run_amica_hpc.m'); catch e; fprintf('ERROR: %s\n', e.message); exit(1); end; exit(0);"
+    "try; run('/scratch/st-ssfels-1/vickywx/amica_hpc.m'); catch e; fprintf('ERROR: %s\n', e.message); exit(1); end; exit(0);"
 
 echo "===== Job finished: $(date) ====="
