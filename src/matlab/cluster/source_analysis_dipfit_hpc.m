@@ -11,7 +11,6 @@
 % ==========================================================================
 
 EEGLAB_PATH    = '/arc/project/st-ssfels-1/tools/eeglab2025.0.0';
-% FIELDTRIP_PATH = '/arc/project/st-ssfels-1/tools/fieldtrip';
 
 BASE_PATH      = '/scratch/st-ssfels-1/vickywx/B2S_data_analysis/data';
 HEADMODEL_DIR_ROOT = fullfile(BASE_PATH, '02_interim_local');
@@ -80,8 +79,11 @@ set(0, 'DefaultFigureVisible', 'off');
 
 % Add toolboxes and start EEGLAB without GUI
 addpath(EEGLAB_PATH);
-% addpath(FIELDTRIP_PATH);
-% ft_defaults;
+
+if strcmp(HEADMODEL_TYPE, 'openmeeg')
+    setenv('PATH', [getenv('PATH') ':/arc/project/st-ssfels-1/tools/OpenMEEG-2.4.1-Linux/bin/']);
+end
+
 eeglab nogui;
 
 global ALLEEG EEG CURRENTSET;
@@ -189,7 +191,7 @@ fprintf('  → Omitting %d channels: [%s]\n\n', length(chanomit_idx), num2str(ch
 num_comps = size(EEG.icaweights, 1);
 fprintf('[STEP 3] Running dipole fitting on %d ICA components...\n', num_comps);
 
-EEG = pop_multifit(EEG, 1:num_comps, 'threshold', 100);
+EEG = pop_multifit(EEG, 1:num_comps);
 
 rv_values = [EEG.dipfit.model.rv];
 good_ics  = find(rv_values <= RV_THRES);

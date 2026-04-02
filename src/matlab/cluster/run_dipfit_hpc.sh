@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=dipfit
 #SBATCH --account=st-ssfels-1
-#SBATCH --time=04:00:00                 # dipfit on 1 subject ~1-2 hrs; adjust as needed
+#SBATCH --time=06:00:00                
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=32G                       # OpenMEEG needs more RAM; bump to 64G if using openmeeg
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=32G                       
 #SBATCH --output=/scratch/st-ssfels-1/vickywx/logs_dipfit/%x_%j.out
 #SBATCH --error=/scratch/st-ssfels-1/vickywx/logs_dipfit/%x_%j.err
 #SBATCH --mail-user=vickywx@student.ubc.ca
@@ -16,7 +16,7 @@
 # ---------------------------------------------------------------------------
 export SUBJ="subj-02"
 export SPEECH_TYPE="sp"          # "sp" = spoken/overt | "im" = imagined/covert
-export HEADMODEL_TYPE="bemcp"    # "bemcp" or "openmeeg"
+export HEADMODEL_TYPE="openmeeg"    # "bemcp" or "openmeeg"
 export RV_THRES="0.15"
 
 # ---------------------------------------------------------------------------
@@ -46,6 +46,6 @@ echo "SLURM_SUBMIT_DIR: ${SLURM_SUBMIT_DIR}"
 echo "Subject: ${SUBJ} | Speech type: ${SPEECH_TYPE} | Headmodel: ${HEADMODEL_TYPE}"
 
 matlab -nodisplay -nosplash -nodesktop -r \
-    "try; run('/scratch/st-ssfels-1/vickywx/source_analysis_dipfit_hpc.m'); catch e; fprintf('ERROR: %s\n', e.message); exit(1); end; exit(0);"
+    "try; run('/scratch/st-ssfels-1/vickywx/B2S_data_analysis/src/matlab/cluster/source_analysis_dipfit_hpc.m'); catch e; fprintf('ERROR: %s\n', e.message); exit(1); end; exit(0);"
 
 echo "===== Job finished: $(date) ====="

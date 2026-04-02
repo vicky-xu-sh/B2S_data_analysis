@@ -46,6 +46,6 @@ echo "Subject: ${SUBJ} | Speech type: ${SPEECH_TYPE}"
 echo "CPUs: ${SLURM_CPUS_PER_TASK}"
 
 matlab -nodisplay -nosplash -nodesktop -r \
-    "try; run('/scratch/st-ssfels-1/vickywx/preproc_hpc.m'); catch e; fprintf('ERROR: %s\n', e.message); exit(1); end; exit(0);"
+    "try; run('/scratch/st-ssfels-1/vickywx/B2S_data_analysis/src/matlab/cluster/preproc_hpc.m'); catch e; fprintf('ERROR: %s\n', e.message); exit(1); end; exit(0);"
 
 echo "===== Job finished: $(date) ====="
