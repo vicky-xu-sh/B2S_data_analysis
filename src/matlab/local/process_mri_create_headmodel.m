@@ -5,10 +5,13 @@
 % ==========================================================================
 
 % CHANGE THESE
-SUBJ        = 'subj-07';
+SUBJ        = 'subj-06';
 
 % set env for openmeeg
 setenv('PATH', [getenv('PATH') ':/Users/vickyxu/Documents/MATLAB/Toolboxes/OpenMEEG-2.4.1-MacOSX/bin/']);
+
+% add fieldtrip path
+ft_defaults;
 
 BASE_PATH  = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/data';
 RAW_PATH   = fullfile(BASE_PATH, '01_raw/', SUBJ);
@@ -71,10 +74,20 @@ fprintf('\n--- Realigning MRI to CTF coordinate system ---\n');
 % raw_lpa = [139 106  22];
 % raw_rpa = [139 117 138];
 
+% subj-05
+% raw_nas = [129 208 57];
+% raw_lpa = [197 117 30];
+% raw_rpa = [63 131 21];
+
+% subj-06
+raw_nas = [114 269 147];
+raw_lpa = [31 159 124];
+raw_rpa = [191 153 118];
+
 % subj-07
-raw_nas = [110 277 182];
-raw_lpa = [23 162 124];
-raw_rpa = [205 165 122];
+% raw_nas = [110 277 182];
+% raw_lpa = [23 162 124];
+% raw_rpa = [205 165 122];
 
 
 fprintf('Fiducials (voxel space):\n');
@@ -100,9 +113,7 @@ fprintf('Realigned MRI to CTF coordinate system.\n');
 
 fprintf('\n--- Plotting fiducials in voxel space ---\n');
 
-% Use identity transform so ft_sourceplot interprets locations as voxels.
-% FIX: was "mri2.transform(:,4) = 1" which corrupted the last row [0 0 0 1]
-%      of the homogeneous matrix. eye(4) alone is the correct identity.
+% Use identity transform so ft_sourceplot interprets locations as voxels. 
 mri2           = mri;
 mri2.transform = eye(4);
 
@@ -147,18 +158,14 @@ cfg.output = {'brain', 'skull', 'scalp'};
 
 % Uncomment and adjust thresholds only if the mesh looks wrong:
 % cfg.scalpthreshold = 0.08;
-% cfg.brainthreshold = 0.5;
+% cfg.brainthreshold = 0.45;
 % (skull thickness can also be adjusted inside the FieldTrip module if needed)
 
 mri_segmented_3_compartment = ft_volumesegment(cfg, mri_unbiased);
 fprintf('Segmentation complete.\n');
 ft_checkdata(mri_segmented_3_compartment, 'feedback', 'yes');
 
-filename = [SUBJ, '_3com_segmentedmri_from_mri_unbiased.mat'];
-save(fullfile(OUTPUT_DIR, filename), 'mri_segmented_3_compartment');
-fprintf('Saved 3-compartment segmented MRI as: %s\n', fullfile(OUTPUT_DIR, filename));
-
-%% Visualise segmented compartments
+% Visualise segmented compartments
 
 fprintf('\n--- Plotting segmented compartments ---\n');
 segmentedmri_indexed         = ft_checkdata(mri_segmented_3_compartment, ...
@@ -173,6 +180,12 @@ cfg_seg.funcolormap  = [0 0 0; 1 0 0; 0 1 0; 0 0 1];  % background / scalp / sku
 cfg_seg.dataname     = sprintf('%s: Segmented compartments (R=scalp, G=skull, B=brain)', SUBJ);
 figure;
 ft_sourceplot(cfg_seg, segmentedmri_indexed);
+
+%% Save segmentation result once everything looks good
+
+filename = [SUBJ, '_3com_segmentedmri_from_mri_unbiased.mat'];
+save(fullfile(OUTPUT_DIR, filename), 'mri_segmented_3_compartment');
+fprintf('Saved 3-compartment segmented MRI as: %s\n', fullfile(OUTPUT_DIR, filename));
 
 %% Construct surface meshes
 
@@ -206,6 +219,7 @@ hold off;
 legend({'Brain', 'Skull', 'Scalp'}, 'Location', 'northeast');
 title(sprintf('%s: Surface meshes (R=brain, G=skull, B=scalp)', SUBJ));
 
+
 %% Create volume conduction model — BEM (bemcp)
 
 fprintf('\n--- Building BEM head model (bemcp) ---\n');
@@ -218,10 +232,6 @@ figure;
 ft_plot_headmodel(headmodel_bemcp, 'facealpha', 0.6);
 title(sprintf('%s: Head model (bemcp)', SUBJ));
 
-filename = [SUBJ, '_headmodel_bemcp.mat'];
-save(fullfile(OUTPUT_DIR, filename), 'headmodel_bemcp');
-fprintf('Saved bemcp head model as: %s\n', fullfile(OUTPUT_DIR, filename));
-
 %% Create volume conduction model — BEM (openmeeg)
 
 fprintf('\n--- Building BEM head model (openmeeg) ---\n');
@@ -233,6 +243,12 @@ fprintf('openmeeg head model ready.\n');
 figure;
 ft_plot_headmodel(headmodel_openmeeg, 'facealpha', 0.6);
 title(sprintf('%s: Head model (openmeeg)', SUBJ));
+
+%% Save the headmodels
+
+filename = [SUBJ, '_headmodel_bemcp.mat'];
+save(fullfile(OUTPUT_DIR, filename), 'headmodel_bemcp');
+fprintf('Saved bemcp head model as: %s\n', fullfile(OUTPUT_DIR, filename));
 
 filename = [SUBJ, '_headmodel_openmeeg.mat'];
 save(fullfile(OUTPUT_DIR, filename), 'headmodel_openmeeg');
@@ -333,6 +349,12 @@ fprintf('\n=== Head model pipeline complete for %s ===\n', SUBJ);
 
 
 
+%% =========================================================================
+% Set the headmodel to be plotted below
+% ==========================================================================
+
+headmodel = headmodel_openmeeg;
+HEADMODEL_TYPE = 'openmeeg';
 
 
 %% =========================================================================

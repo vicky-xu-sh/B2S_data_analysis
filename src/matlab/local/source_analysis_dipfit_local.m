@@ -1,4 +1,4 @@
-% source_analysis_dipfit.m
+% source_analysis_dipfit_local.m
 % Source localization pipeline using DIPFIT with a custom BEM headmodel.
 
 %% =========================================================================
@@ -6,20 +6,42 @@
 % ==========================================================================
 
 % CHANGE THESE
-SUBJ        = 'subj-02';
+SUBJ        = 'subj-03';
 SPEECH_TYPE = 'im';   % 'sp' = spoken/overt | 'im' = imagined/covert
-HEADMODEL_TYPE = 'openmeeg';  %'bemcp' or 'openmeeg'
+HEADMODEL_TYPE = 'bemcp';  %'bemcp' or 'openmeeg'
 RV_THRES = 0.15;
 
-coord_transform = [-2 0 23 -0.142526 -0.00426732 0.117257 10.3 10.3 10.3];
+% coord_transform = [-2 0 23 -0.142526 -0.00426732 0.117257 10.3 10.3 10.3]; % subj-02
 % chanomit_idx    = [210 211 217:245]; % subj-02, spoken
-chanomit_idx    = [60 66 204 205 211:240]; % subj-02, imagined
+% chanomit_idx    = [60 66 204 205 211:240]; % subj-02, imagined
+
+% coord_transform = [10.5 -1.2 17 0.086 -0.03 -0.06 10.01 10.01 10.01];  % subj-03
+% chanomit_idx = [98 106 116 162:184]; % subj-03, spoken
+% chanomit_idx = [67 98 105 114 125 135 144 152 171 182 183 187:216]; % subj-03, imagined
+
+% coord_transform = [3.8 -3 18.7 -0.12 -0.09 -0.03 10.1 10.1 10.1]; % subj-04
+% chanomit_idx = [181 187:210]; % subj-04, spoken
+% chanomit_idx = [72 80 183 184 190:217]; % subj-04, imagined
+
+% coord_transform = [10 3 33 0 0.09 -0.1 9.8 9.8 9.8];  % subj-05
+% chanomit_idx = [64 70 163 169 170 171 176:204];  % subj-05, spoken
+% chanomit_idx = [64 70 78 117 143 163 169 170 171 172 177:207]; % subj-05, imagined
+
+% coord_transform = [4 0.5 38 0.02 0.18 0.04 10.05 10.05 10.05];  % subj-06
+% chanomit_idx = [60 64 160:174];  % subj-06, spoken
+% chanomit_idx = [67 72 185 191:216];  % subj-06, imagined
+
+% coord_transform = [6 -1.2 33 0.06 0.14 0 10.6 10.6 10.6]; % subj-07 (not good)
+% coord_transform = [8 -1.2 35 0.06 0.06 0 10.4 10.4 10.4]; % subj-07
+% chanomit_idx = [66 72 207 208 214:235]; % subj-07, spoken
+% chanomit_idx = [66 72 81 89 212 213 214 221:249]; % subj-07, imagined
+
 
 BASE_PATH     = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/data';
 HEADMODEL_DIR = fullfile(BASE_PATH, '02_interim_local', SUBJ, 'custom_headmodel');
 % set env for openmeeg
 setenv('PATH', [getenv('PATH') ':/Users/vickyxu/Documents/MATLAB/Toolboxes/OpenMEEG-2.4.1-MacOSX/bin/']);
-
+setenv('OMP_DISPLAY_ENV', 'FALSE');
 
 % Build I/O paths (mirrors cluster directory structure)
 if strcmp(SPEECH_TYPE, 'sp')
@@ -112,22 +134,23 @@ fprintf('  → Chanlocs:   %s\n\n', chanlocs_path);
 EEG.dipfit.hdmfile    = headmodel;
 EEG.dipfit.mrifile    = mri_unbiased;
 EEG.dipfit.chanfile   = chanlocs;
+EEG.dipfit.coordformat = 'SCS';
 
 % Apply subject-specific electrode-to-headmodel alignment.
 % To re-derive this interactively, comment out pop_dipfit_settings below
 % and run:  EEG = pop_dipfit_settings(EEG);
 % Then copy the coord_transform and chanomit values printed to the command window.
 
-fprintf('[STEP 2b] Applying electrode alignment...\n');
-
-EEG = pop_dipfit_settings( EEG, ...
-    'coordformat',     'SCS', ...
-    'coord_transform',  coord_transform, ...
-    'chanomit',         chanomit_idx );
-
-fprintf('  → coord_transform: [%s]\n',   num2str(coord_transform));
-fprintf('  → Omitting %d channels (non-scalp / bad): [%s]\n\n', ...
-    length(chanomit_idx), num2str(chanomit_idx));
+% fprintf('[STEP 2b] Applying electrode alignment...\n');
+% 
+% EEG = pop_dipfit_settings( EEG, ...
+%     'coordformat',     'SCS', ...
+%     'coord_transform',  coord_transform, ...
+%     'chanomit',         chanomit_idx );
+% 
+% fprintf('  → coord_transform: [%s]\n',   num2str(coord_transform));
+% fprintf('  → Omitting %d channels (non-scalp / bad): [%s]\n\n', ...
+%     length(chanomit_idx), num2str(chanomit_idx));
 
 %% =========================================================================
 %  Run DIPFIT autofit
@@ -140,7 +163,7 @@ num_comps = size(EEG.icaweights, 1);
 
 fprintf('[STEP 3] Running dipole fitting on %d ICA components...\n', num_comps);
 
-EEG = pop_multifit(EEG, 1:num_comps, 'threshold', 100);
+EEG = pop_multifit(EEG, 1:num_comps);
 
 % Quick post-fit summary: which components fit well?
 rv_values    = [EEG.dipfit.model.rv];
@@ -153,15 +176,15 @@ fprintf('  → RV ≤ %.2f (good fit): %d / %d components — ICs: [%s]\n', ...
 fprintf('  → RV > %.2f (poor fit): %d / %d components — ICs: [%s]\n\n', ...
     RV_THRES, length(poor_ics), num_comps, num2str(poor_ics));
 
-% Save CTF (subject-specific-space) dipfit result
-setname  = [SUBJ, '_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_epoched_dipfit_ctf_',HEADMODEL_TYPE,'_headmodel'];
-filename = [setname, '.set'];
-[ALLEEG, EEG, CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET, ...
-    'setname',  setname, ...
-    'savenew',  fullfile(OUTPUT_DIR, filename), ...
-    'gui',      'off');
-eeglab('redraw');
-fprintf('[SAVE] CTF-space result saved to:\n  %s\n\n', fullfile(OUTPUT_DIR, filename));
+% % Save CTF (subject-specific-space) dipfit result
+% setname  = [SUBJ, '_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_epoched_dipfit_ctf_',HEADMODEL_TYPE,'_headmodel'];
+% filename = [setname, '.set'];
+% [ALLEEG, EEG, CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET, ...
+%     'setname',  setname, ...
+%     'savenew',  fullfile(OUTPUT_DIR, filename), ...
+%     'gui',      'off');
+% eeglab('redraw');
+% fprintf('[SAVE] CTF-space result saved to:\n  %s\n\n', fullfile(OUTPUT_DIR, filename));
 
 %% =========================================================================
 %  Warp dipole positions to MNI space
@@ -332,7 +355,7 @@ dipplot(EEG2.dipfit.model(1:length(EEG2.dipfit.model)), ...
 
 % EDIT: change i to the IC you want to inspect (and make sure EEG is the
 % correct dataset)
-i = 4;
+i = 14;
 
 fprintf('[STEP 6b] Plotting IC %d in CTF space (sanity check)...\n', i);
 figure; hold on;
