@@ -299,10 +299,14 @@ def run_condition(
     onset_times  = speech_data['onset_latencies'].squeeze()
     offset_times = speech_data['offset_latencies'].squeeze()
 
-    print(f"[3/4] Rejecting {len(bad_epochs)} bad epoch(s): {bad_epochs}")
-    good_mask, (power, z_power, inst_freq, labels, onset_times, offset_times) = \
-        reject_epochs(bad_epochs, power, z_power, inst_freq, labels, onset_times, offset_times)
-    print(f"  Remaining trials: {good_mask.sum()}")
+    if len(bad_epochs) > 0:
+        print(f"[3/4] Rejecting {len(bad_epochs)} bad epoch(s): {bad_epochs}")
+        good_mask, (power, z_power, inst_freq, labels, onset_times, offset_times) = \
+            reject_epochs(bad_epochs, power, z_power, inst_freq, labels, onset_times, offset_times)
+        print(f"  Remaining trials: {good_mask.sum()}")
+    else:
+        print("[3/4] Skipping bad epoch rejection - no bad epochs specified")
+        print(f"  Keeping all {power.shape[-1]} trials")
 
     print(f"[4/4] Smoothing (zero-phase Butterworth LP at {LP_CUTOFF_HZ} Hz, order {LP_ORDER})...")
     z_power_smooth   = lowpass_smooth(z_power,   cutoff_hz=LP_CUTOFF_HZ, fs=FS)

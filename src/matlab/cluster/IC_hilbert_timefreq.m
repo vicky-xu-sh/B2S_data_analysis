@@ -5,7 +5,7 @@
 % ==========================================================================
  
 EEGLAB_PATH     = '/arc/project/st-ssfels-1/tools/eeglab2025.0.0';
-INPUT_SET_PATH  = '/scratch/st-ssfels-1/vickywx/B2S_data_analysis/data/03_interim_cluster';
+INPUT_BASE_PATH  = '/scratch/st-ssfels-1/vickywx/B2S_data_analysis/data/03_interim_cluster';
 OUTPUT_MAT_PATH = '/scratch/st-ssfels-1/vickywx/B2S_data_analysis/data/04_processed';
  
  
@@ -44,9 +44,9 @@ EEG        = [];
 CURRENTSET = 0;
 
 if strcmp(SPEECH_TYPE, 'sp')
-    INPUT_DIR   = fullfile(INPUT_SET_PATH, SUBJ, 'spoken');
+    INPUT_DIR   = fullfile(INPUT_BASE_PATH, SUBJ, 'spoken', 'datasets');
 elseif strcmp(SPEECH_TYPE, 'im')
-    INPUT_DIR   = fullfile(INPUT_SET_PATH, SUBJ, 'imagined');
+    INPUT_DIR   = fullfile(INPUT_BASE_PATH, SUBJ, 'imagined', 'datasets');
 end
 
 fprintf('Input directory: %s\n', INPUT_DIR);

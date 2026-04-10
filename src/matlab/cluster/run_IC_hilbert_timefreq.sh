@@ -9,7 +9,7 @@
 #SBATCH --output=/scratch/st-ssfels-1/vickywx/logs_hilbert/%x_%A_%a.out
 #SBATCH --error=/scratch/st-ssfels-1/vickywx/logs_hilbert/%x_%A_%a.err
 #SBATCH --mail-user=vickywx@student.ubc.ca
-#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-type=FAIL
  
 # ---------------------------------------------------------------------------
 # CONFIGURE: edit subjects and speech types to run
@@ -84,7 +84,7 @@ echo "CPUs:             ${SLURM_CPUS_PER_TASK}"
 echo "Mem:              ${SLURM_MEM_PER_NODE} MB"
  
 matlab -nodisplay -nosplash -nodesktop -r \
-    "try; run('/scratch/st-ssfels-1/vickywx/B2S_data_analysis/IC_hilbert_timefreq.m'); catch e; fprintf('ERROR: %s\n', e.message); exit(1); end; exit(0);"
+    "try; run('/scratch/st-ssfels-1/vickywx/B2S_data_analysis/src/matlab/cluster/IC_hilbert_timefreq.m'); catch e; fprintf('ERROR: %s\n', e.message); exit(1); end; exit(0);"
  
 EXIT_CODE=$?
  

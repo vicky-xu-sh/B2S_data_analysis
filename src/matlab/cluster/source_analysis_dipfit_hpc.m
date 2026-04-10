@@ -66,6 +66,43 @@ switch SUBJ
         else
             chanomit_idx = [60 66 204 205 211:240];
         end
+    case 'subj-03'
+        coord_transform = [10.5 -1.2 17 0.086 -0.03 -0.06 10.01 10.01 10.01]; 
+        if strcmp(SPEECH_TYPE, 'sp')
+            chanomit_idx = [98 106 116 162:184];
+        else
+            chanomit_idx = [67 98 105 114 125 135 144 152 171 182 183 187:216];
+        end
+    case 'subj-04'
+        coord_transform = [3.8 -3 18.7 -0.12 -0.09 -0.03 10.1 10.1 10.1]; 
+        if strcmp(SPEECH_TYPE, 'sp')
+            chanomit_idx = [181 187:210];
+        else
+            chanomit_idx = [72 80 183 184 190:217];
+        end
+    
+    case 'subj-05'
+        coord_transform = [10 3 33 0.09 -0.1 0 9.8 9.8 9.8];  
+        if strcmp(SPEECH_TYPE, 'sp')
+            chanomit_idx = [64 70 163 169 170 171 176:204];
+        else
+            chanomit_idx = [64 70 78 117 143 163 169 170 171 172 177:207];
+        end
+    case 'subj-06'
+        coord_transform = [4 0.5 38 0.02 0.18 0.04 10.05 10.05 10.05];  
+        if strcmp(SPEECH_TYPE, 'sp')
+            chanomit_idx = [60 64 160:174];
+        else
+            chanomit_idx = [67 72 185 191:216];
+        end
+    case 'subj-07'
+        % coord_transform = [6 -1.2 33 0.06 0.14 0 10.6 10.6 10.6]; % bad
+        coord_transform = [8 -1.2 35 0.06 0.06 0 10.4 10.4 10.4];
+        if strcmp(SPEECH_TYPE, 'sp')
+            chanomit_idx = [66 72 207 208 214:235];
+        else
+            chanomit_idx = [66 72 81 89 212 213 214 221:249];
+        end
     otherwise
         error('[ERROR] No alignment parameters defined for subject: %s\n  Add a case block in the CONFIGURATION section.', SUBJ);
 end

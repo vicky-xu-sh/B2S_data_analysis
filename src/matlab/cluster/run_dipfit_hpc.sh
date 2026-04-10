@@ -4,7 +4,7 @@
 #SBATCH --time=06:00:00                
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=32G                       
 #SBATCH --output=/scratch/st-ssfels-1/vickywx/logs_dipfit/%x_%j.out
 #SBATCH --error=/scratch/st-ssfels-1/vickywx/logs_dipfit/%x_%j.err
@@ -14,9 +14,9 @@
 # ---------------------------------------------------------------------------
 # Subject and condition — edit here to run a specific subject
 # ---------------------------------------------------------------------------
-export SUBJ="subj-02"
-export SPEECH_TYPE="sp"          # "sp" = spoken/overt | "im" = imagined/covert
-export HEADMODEL_TYPE="openmeeg"    # "bemcp" or "openmeeg"
+export SUBJ="subj-04"
+export SPEECH_TYPE="im"          # "sp" = spoken/overt | "im" = imagined/covert
+export HEADMODEL_TYPE="bemcp"    # "bemcp" or "openmeeg"
 export RV_THRES="0.15"
 
 # ---------------------------------------------------------------------------
@@ -43,6 +43,7 @@ mkdir -p /scratch/st-ssfels-1/vickywx/logs_dipfit
 echo "===== Job started: $(date) ====="
 echo "Node: $(hostname)"
 echo "SLURM_SUBMIT_DIR: ${SLURM_SUBMIT_DIR}"
+echo "CPUs: ${SLURM_CPUS_PER_TASK}"
 echo "Subject: ${SUBJ} | Speech type: ${SPEECH_TYPE} | Headmodel: ${HEADMODEL_TYPE}"
 
 matlab -nodisplay -nosplash -nodesktop -r \
