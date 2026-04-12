@@ -1,0 +1,464 @@
+#!/usr/bin/env python3
+"""
+classification_overt_band_sweep.py — Band sweep for overt condition
+
+RQ: Which frequency bands carry the most discriminative information
+for syllable classification during overt speech?
+
+Runs the band sweep under two window definitions, mirroring W4 Exp A and Exp B:
+
+  Sweep A — Uniform pre-onset (--best-overall-pre-onset-ms):
+    Window: [onset - X ms, onset + speech_window_ms] for all trials
+    t_vec : -X ms to +speech_window_ms
+
+  Sweep B — Consonant-group-specific pre-onset (--consonant-pre-onset-ms):
+    Each consonant group uses its own pre-onset.
+    Total window = max(group_pre_onsets) + CONSONANT_POST_BASE_MS (fixed).
+    Post-onset per group = total_window - group_pre_onset.
+    t_vec : 0 to total_win_ms (t=0 = start of earliest articulatory prep window)
+
+IC set : brain ICs only
+Feature: z_power_smooth
+
+Band sets (9 total, defined in constants.py: BAND_SETS):
+  all_bands, theta, alpha, beta, gamma, high_gamma, mu, wide_gamma, beta_wide_gamma
+
+Run AFTER classification_overt_W4_sweep.py.
+Use its recommended pre-onset values as arguments.
+
+Usage
+-----
+    python classification_overt_band_sweep.py \\
+        --subj subj-02 \\
+        --input-dir  /path/to/04_processed/ \\
+        --output-dir /path/to/results/ \\
+        --overt-brain-ics 4 7 14 21 22 32 \\
+        --overt-bad-epochs 1 111 \\
+        --best-overall-pre-onset-ms 250 \\
+        --consonant-pre-onset-ms 250 350 100 \\
+        --speech-window-ms 500
+
+    # Parallel band experiments
+    python classification_overt_band_sweep.py ... --n-jobs 4
+"""
+
+import os
+import argparse
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from scipy.io import loadmat
+import joblib
+
+from constants import (
+    SYLLABLES, FS, BAND_NAMES, BAND_SETS,
+    CONSONANT_GROUPS, CONSONANT_POST_BASE_MS,
+)
+from utils import (
+    LP_CUTOFF_HZ,
+    load_analytic, compute_features, reject_epochs,
+    compute_speech_window_tp, derive_epoch_indices,
+    lowpass_smooth,
+    build_X_speech_window,
+    run_classifiers,
+    plot_feature_importance,
+    print_and_save_summary,
+)
+
+CONSONANT_GROUP_NAMES = list(CONSONANT_GROUPS.keys())
+
+
+# ---------------------------------------------------------------------------
+# Consonant-specific X builder with band selection
+# ---------------------------------------------------------------------------
+
+def build_X_consonant_window(z_power_smooth, y, onset_tps,
+                              brain_ics_0idx, consonant_pre_onsets_ms,
+                              band_idx=None):
+    """
+    Build feature matrix using consonant-group-specific windows.
+
+    Each trial's window: [onset - group_pre_onset, onset + group_post_onset]
+    Total window length is fixed: max(pre_onsets) + CONSONANT_POST_BASE_MS
+
+    Parameters
+    ----------
+    z_power_smooth          : np.ndarray [ICs x bands x time x trials]
+    y                       : np.ndarray [trials], 1-indexed integer labels
+    onset_tps               : np.ndarray [trials]
+    brain_ics_0idx          : list of int
+    consonant_pre_onsets_ms : dict {group_name: pre_onset_ms}
+    band_idx                : list of int or None (None = all bands)
+
+    Returns
+    -------
+    X            : np.ndarray [trials x features]
+    total_win_ms : int, total window length in ms
+    total_win_tp : int, total window length in samples
+    """
+    nBands_all  = z_power_smooth.shape[1]
+    bands       = band_idx if band_idx is not None else list(range(nBands_all))
+    nBands      = len(bands)
+    nICs        = len(brain_ics_0idx)
+    nTrials     = z_power_smooth.shape[-1]
+    total_T     = z_power_smooth.shape[2]
+
+    max_pre_ms   = max(consonant_pre_onsets_ms.values())
+    total_win_ms = max_pre_ms + CONSONANT_POST_BASE_MS
+    total_win_tp = int(total_win_ms / 1000 * FS)
+
+    X_out = np.zeros((nICs, nBands, total_win_tp, nTrials))
+
+    for group_name, label_1idx in CONSONANT_GROUPS.items():
+        pre_ms  = consonant_pre_onsets_ms[group_name]
+        post_ms = total_win_ms - pre_ms
+        pre_tp  = int(pre_ms  / 1000 * FS)
+        post_tp = int(post_ms / 1000 * FS)
+
+        trial_mask = np.isin(y, label_1idx)
+
+        for i in np.where(trial_mask)[0]:
+            start = int(onset_tps[i]) - pre_tp
+            end   = int(onset_tps[i]) + post_tp
+
+            if start < 0 or end > total_T:
+                print(f'  Trial {i} ({group_name}): '
+                      f'window [{start},{end}] out of bounds — zero-filled')
+                continue
+
+            X_out[:, :, :, i] = z_power_smooth[
+                np.ix_(brain_ics_0idx, bands, list(range(start, end)), [i])
+            ][:, :, :, 0]
+
+    X_out = X_out.transpose(3, 0, 1, 2)
+    return X_out.reshape(nTrials, -1), total_win_ms, total_win_tp
+
+
+# ---------------------------------------------------------------------------
+# Band sweep summary plot
+# ---------------------------------------------------------------------------
+
+def plot_band_sweep_summary(results, band_labels, save_dir, subj, cond,
+                             win_str, tag):
+    """
+    Grouped bar chart of SVM/RF accuracy per band set + per-class RF recall heatmap.
+
+    Parameters
+    ----------
+    results     : list of ExperimentResult, one per band set
+    band_labels : list of str
+    save_dir    : str
+    subj        : str
+    cond        : str
+    win_str     : str, window description for suptitle
+    tag         : str, used in filename (e.g. 'uniform' or 'consonant')
+    """
+    svm_accs = [r.svm_accuracy for r in results]
+    rf_accs  = [r.rf_accuracy  for r in results]
+    svm_bals = [r.svm_bal_acc  for r in results]
+    rf_bals  = [r.rf_bal_acc   for r in results]
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 5))
+
+    ax = axes[0]
+    x  = np.arange(len(band_labels))
+    w  = 0.2
+    ax.bar(x - 1.5*w, svm_accs, w, label='SVM acc',     color='steelblue',  alpha=0.9)
+    ax.bar(x - 0.5*w, svm_bals, w, label='SVM bal acc', color='steelblue',  alpha=0.45)
+    ax.bar(x + 0.5*w, rf_accs,  w, label='RF acc',      color='darkorange', alpha=0.9)
+    ax.bar(x + 1.5*w, rf_bals,  w, label='RF bal acc',  color='darkorange', alpha=0.45)
+    ax.axhline(1/6, color='gray', linestyle=':', linewidth=0.8, label='Chance (1/6)')
+    ax.set_xticks(x)
+    ax.set_xticklabels(band_labels, rotation=35, ha='right', fontsize=9)
+    ax.set_ylabel('Cross-validated accuracy')
+    ax.set_title('Accuracy by band set')
+    ax.legend(fontsize=8)
+    ax.grid(axis='y', alpha=0.4)
+    ax.set_ylim(0, 1)
+
+    ax = axes[1]
+    recall_matrix = np.array([
+        [r.rf_per_class.get(syl, 0) for syl in SYLLABLES]
+        for r in results
+    ])
+    im = ax.imshow(recall_matrix, aspect='auto', cmap='RdYlGn', vmin=0, vmax=1)
+    ax.set_xticks(range(len(SYLLABLES)))
+    ax.set_xticklabels(SYLLABLES, fontsize=10)
+    ax.set_yticks(range(len(band_labels)))
+    ax.set_yticklabels(band_labels, fontsize=9)
+    ax.set_xlabel('Syllable')
+    ax.set_ylabel('Band set')
+    ax.set_title('Per-class recall (RF)')
+    plt.colorbar(im, ax=ax, label='Recall')
+
+    for i in range(len(band_labels)):
+        for j in range(len(SYLLABLES)):
+            val   = recall_matrix[i, j]
+            color = 'white' if val < 0.3 or val > 0.8 else 'black'
+            ax.text(j, i, f'{val:.2f}', ha='center', va='center',
+                    fontsize=8, color=color)
+
+    fig.suptitle(
+        f'{subj} | Band sweep ({tag}) — brain ICs, z_power_smooth\n'
+        f'Window: {win_str}',
+        fontsize=11)
+    plt.tight_layout()
+
+    fpath = os.path.join(save_dir,
+        f'{subj}_{cond}_band_sweep_{tag}_summary.png')
+    fig.savefig(fpath, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f'\n  Saved band sweep summary: {fpath}')
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='EEG band sweep classification — overt condition')
+
+    parser.add_argument(
+        '--subj', required=True, type=str,
+        help='Subject ID, e.g. subj-02')
+    parser.add_argument(
+        '--input-dir', required=True, type=str,
+        help='Directory containing analytic .mat files')
+    parser.add_argument(
+        '--output-dir', required=True, type=str,
+        help='Output directory for figures and CSVs')
+    parser.add_argument(
+        '--overt-brain-ics', required=True, type=int, nargs='+',
+        help='1-indexed brain ICs for overt condition')
+    parser.add_argument(
+        '--overt-bad-epochs', default=[], type=int, nargs='*',
+        help='1-indexed bad epochs to reject')
+    parser.add_argument(
+        '--best-overall-pre-onset-ms', required=True, type=int,
+        help='Uniform pre-onset for Sweep A (ms). '
+             'Use W4 best overall recommendation.')
+    parser.add_argument(
+        '--consonant-pre-onset-ms', required=True, type=int, nargs=3,
+        metavar=('STOP_MS', 'NASAL_MS', 'FRICATIVE_MS'),
+        help='Pre-onset per consonant group for Sweep B (ms), '
+             'ordered: stop (gi/gu), nasal (mi/mu), fricative (si/su). '
+             'Use W4 consonant-group recommendation.')
+    parser.add_argument(
+        '--speech-window-ms', default=None, type=int,
+        help='Post-onset speech window (ms). Should match W4 sweep script. '
+             'Default: auto-derived from mean(offset - onset).')
+    parser.add_argument(
+        '--n-jobs', default=1, type=int,
+        help='n_jobs=1 → sequential, GridSearchCV uses all cores. '
+             'n_jobs>1 → parallel band experiments, GridSearchCV single-threaded.')
+
+    args = parser.parse_args()
+
+    subj       = args.subj
+    cond_code  = 'sp'
+    cond_label = 'spoken'
+    inner_jobs = -1 if args.n_jobs == 1 else 1
+
+    best_overall_ms = args.best_overall_pre_onset_ms
+    consonant_pre_onsets_ms = {
+        name: args.consonant_pre_onset_ms[i]
+        for i, name in enumerate(CONSONANT_GROUP_NAMES)
+    }
+
+    brain_ics_1idx  = args.overt_brain_ics
+    brain_ics_0idx  = [ic - 1 for ic in brain_ics_1idx]
+    bad_epochs      = args.overt_bad_epochs
+    ic_labels_brain = [f'IC{ic}' for ic in brain_ics_1idx]
+
+    save_dir = os.path.join(args.output_dir, subj, cond_label, 'band_sweep')
+    os.makedirs(save_dir, exist_ok=True)
+
+    # -------------------------------------------------------------------
+    # Load and preprocess
+    # -------------------------------------------------------------------
+    print(f'\n{"="*60}')
+    print(f'  Subject:        {subj}')
+    print(f'  Condition:      {cond_label} ({cond_code})')
+    print(f'  Brain ICs:      {brain_ics_1idx} ({len(brain_ics_1idx)} total)')
+    print(f'  Bad epochs:     {bad_epochs if bad_epochs else "None"}')
+    print(f'  Sweep A pre-onset (uniform):      {best_overall_ms} ms')
+    for name, ms in consonant_pre_onsets_ms.items():
+        print(f'  Sweep B pre-onset ({name}): {ms} ms')
+    print(f'{"="*60}')
+
+    data_path  = os.path.join(args.input_dir, f'{subj}_{cond_code}_eeg_analytic.mat')
+    onset_path = os.path.join(args.input_dir, f'{subj}_speech_onset_offset.mat')
+
+    print('[1/4] Loading analytic signal...')
+    Z, labels, times = load_analytic(data_path)
+    print(f'  Shape: {Z.shape}')
+
+    idx_0ms, _ = derive_epoch_indices(times)
+
+    print('[2/4] Computing features...')
+    _, _, _, z_power = compute_features(Z, times)
+
+    speech_data  = loadmat(onset_path)
+    onset_times  = speech_data['onset_latencies'].squeeze()
+    offset_times = speech_data['offset_latencies'].squeeze()
+
+    if len(bad_epochs) > 0:
+        print(f'[3/4] Rejecting {len(bad_epochs)} bad epoch(s): {bad_epochs}')
+        good_mask, (z_power, labels, onset_times, offset_times) = \
+            reject_epochs(bad_epochs, z_power, labels, onset_times, offset_times)
+        print(f'  Remaining trials: {good_mask.sum()}')
+    else:
+        print('[3/4] Skipping bad epoch rejection - no bad epochs specified')
+        good_mask = np.ones(z_power.shape[-1], dtype=bool)
+        print(f'  Keeping all {good_mask.sum()} trials')
+
+    print(f'[4/4] Smoothing (LP {LP_CUTOFF_HZ} Hz)...')
+    z_power_smooth = lowpass_smooth(z_power)
+
+    onset_tps  = np.rint(onset_times  / 1000 * FS + idx_0ms).astype(int)
+    offset_tps = np.rint(offset_times / 1000 * FS + idx_0ms).astype(int)
+
+    invalid = np.where(offset_tps < onset_tps)[0]
+    if len(invalid) > 0:
+        print(f'  WARNING: {len(invalid)} trials have offset < onset — check data')
+
+    if args.speech_window_ms is not None:
+        speech_window_tp = int(args.speech_window_ms / 1000 * FS)
+        speech_window_ms = args.speech_window_ms
+        print(f'  Speech window (from arg): {speech_window_ms} ms = {speech_window_tp} samples')
+    else:
+        speech_window_tp = compute_speech_window_tp(onset_tps, offset_tps)
+        speech_window_ms = int(speech_window_tp / FS * 1000)
+
+    y           = np.array(labels).astype(int)
+    band_items  = list(BAND_SETS.items())
+    band_labels = list(BAND_SETS.keys())
+
+    # -------------------------------------------------------------------
+    # Sweep A — uniform pre-onset window
+    # -------------------------------------------------------------------
+    pre_onset_tp_a = int(best_overall_ms / 1000 * FS)
+    win_tp_a       = pre_onset_tp_a + speech_window_tp
+    # win_ms_a       = pre_onset_tp_a * 1000 // FS + speech_window_ms
+    t_vec_a        = np.linspace(-best_overall_ms, speech_window_ms, win_tp_a)
+    win_str_a      = (f'onset-{best_overall_ms}ms → onset+{speech_window_ms}ms'
+                      if best_overall_ms > 0 else
+                      f'onset → onset+{speech_window_ms}ms')
+
+    print(f'\n{"="*60}')
+    print(f'  Sweep A — uniform window: {win_str_a}')
+    print(f'  ({win_tp_a} samples per trial)')
+    print(f'{"="*60}')
+
+    def _band_job_A(band_name, band_idx):
+        nBands_b = len(band_idx)
+        exp_name = (f'BandA_{band_name}_brainIC_zpower_'
+                    f'pre{best_overall_ms}ms_speech{speech_window_ms}ms')
+
+        print(f'\n  [A | {band_name}]  '
+              f'nICs={len(brain_ics_0idx)} nBands={nBands_b} nTime={win_tp_a}')
+
+        X = build_X_speech_window(
+            z_power_smooth, brain_ics_0idx, onset_tps,
+            pre_onset_tp=pre_onset_tp_a,
+            post_onset_tp=speech_window_tp,
+            band_idx=band_idx)
+
+        r, rf_model = run_classifiers(
+            exp_name, X, y, save_dir, subj, cond_code,
+            ic_set='brain', band_set=band_name,
+            feature='z_power_smooth',
+            window=f'uniform_onset-{best_overall_ms}ms_to_onset+{speech_window_ms}ms',
+            inner_n_jobs=inner_jobs)
+
+        plot_feature_importance(
+            rf_model, len(brain_ics_0idx), nBands_b, win_tp_a,
+            ic_labels_brain, t_vec_a,
+            save_dir, subj, cond_code, exp_name)
+
+        return r
+
+    if args.n_jobs == 1:
+        results_A = [_band_job_A(name, idx) for name, idx in band_items]
+    else:
+        results_A = joblib.Parallel(n_jobs=args.n_jobs, prefer='loky')(
+            joblib.delayed(_band_job_A)(name, idx) for name, idx in band_items)
+
+    plot_band_sweep_summary(
+        results_A, band_labels, save_dir, subj, cond_code,
+        win_str=win_str_a, tag='uniform')
+
+    print_and_save_summary(
+        results_A, save_dir, subj, cond_code,
+        tag=f'band_sweep_uniform_pre{best_overall_ms}ms')
+
+    # -------------------------------------------------------------------
+    # Sweep B — consonant-specific window
+    # -------------------------------------------------------------------
+    max_pre_ms    = max(consonant_pre_onsets_ms.values())
+    total_win_ms  = max_pre_ms + CONSONANT_POST_BASE_MS
+    total_win_tp  = int(total_win_ms / 1000 * FS)
+    # t=0 is start of window (earliest articulatory prep onset across groups)
+    t_vec_b       = np.linspace(0, total_win_ms, total_win_tp)
+
+    groups_str = '_'.join([f'{g[:3]}{v}ms'
+                           for g, v in consonant_pre_onsets_ms.items()])
+    win_str_b  = (f'consonant-specific total {total_win_ms} ms '
+                  f'({groups_str})')
+
+    print(f'\n{"="*60}')
+    print('  Sweep B — consonant-specific window')
+    print(f'  Total window: {total_win_ms} ms ({total_win_tp} samples)')
+    for group_name, pre_ms in consonant_pre_onsets_ms.items():
+        post_ms = total_win_ms - pre_ms
+        syls    = [SYLLABLES[l - 1] for l in CONSONANT_GROUPS[group_name]]
+        print(f'    {group_name:12s} ({"/".join(syls)}): '
+              f'pre={pre_ms} ms  post={post_ms} ms')
+    print(f'{"="*60}')
+
+    def _band_job_B(band_name, band_idx):
+        nBands_b = len(band_idx)
+        exp_name = (f'BandB_{band_name}_brainIC_zpower_{groups_str}')
+
+        print(f'\n  [B | {band_name}]  '
+              f'nICs={len(brain_ics_0idx)} nBands={nBands_b} nTime={total_win_tp}')
+
+        X, _, _ = build_X_consonant_window(
+            z_power_smooth, y, onset_tps,
+            brain_ics_0idx, consonant_pre_onsets_ms,
+            band_idx=band_idx)
+
+        r, rf_model = run_classifiers(
+            exp_name, X, y, save_dir, subj, cond_code,
+            ic_set='brain', band_set=band_name,
+            feature='z_power_smooth',
+            window=f'consonant_specific_total{total_win_ms}ms',
+            inner_n_jobs=inner_jobs)
+
+        plot_feature_importance(
+            rf_model, len(brain_ics_0idx), nBands_b, total_win_tp,
+            ic_labels_brain, t_vec_b,
+            save_dir, subj, cond_code, exp_name)
+
+        return r
+
+    if args.n_jobs == 1:
+        results_B = [_band_job_B(name, idx) for name, idx in band_items]
+    else:
+        results_B = joblib.Parallel(n_jobs=args.n_jobs, prefer='loky')(
+            joblib.delayed(_band_job_B)(name, idx) for name, idx in band_items)
+
+    plot_band_sweep_summary(
+        results_B, band_labels, save_dir, subj, cond_code,
+        win_str=win_str_b, tag='consonant')
+
+    print_and_save_summary(
+        results_B, save_dir, subj, cond_code,
+        tag=f'band_sweep_consonant_{groups_str}')
+
+
+if __name__ == '__main__':
+    main()
+
+
