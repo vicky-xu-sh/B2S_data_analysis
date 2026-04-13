@@ -11,7 +11,8 @@ Imported by:
 from constants import (
     SYLLABLES, FS, LP_CUTOFF_HZ, LP_ORDER,
     BASELINE_START_MS, BASELINE_END_MS, BAND_NAMES,
-    C_PARAMS, KERNEL_PARAMS, ESTIMATORS_PARAMS, DEPTH_PARAMS, SPLITS_PARAMS,
+    C_PARAMS, KERNEL_PARAMS, 
+    ESTIMATORS_PARAMS, DEPTH_PARAMS, SPLITS_PARAMS, MAX_FEATURES_PARAMS
 )
 
 import math
@@ -288,6 +289,7 @@ def _make_rf_pipeline(inner_n_jobs):
         'rf__n_estimators':      ESTIMATORS_PARAMS,
         'rf__max_depth':         DEPTH_PARAMS,
         'rf__min_samples_split': SPLITS_PARAMS,
+        'rf__max_features':      MAX_FEATURES_PARAMS,
     }
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     return GridSearchCV(pipeline, param_grid, cv=cv, scoring='accuracy',

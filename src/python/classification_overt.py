@@ -34,13 +34,11 @@ Usage
     python classification_overt.py ... --speech-window-ms 600
 """
 
-import os
-import argparse
-import numpy as np
-from scipy.io import loadmat
+from constants import (
+    FS, LP_CUTOFF_HZ, W3_PRE_ONSET_MS,
+)
 
 from utils import (
-    FS, LP_CUTOFF_HZ, W3_PRE_ONSET_MS,
     load_analytic, compute_features, reject_epochs,
     compute_speech_window_tp, derive_epoch_indices,
     lowpass_smooth,
@@ -49,6 +47,11 @@ from utils import (
     plot_feature_importance,
     print_and_save_summary,
 )
+
+import os
+import argparse
+import numpy as np
+from scipy.io import loadmat
 
 
 # ---------------------------------------------------------------------------

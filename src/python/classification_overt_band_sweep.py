@@ -140,72 +140,65 @@ def build_X_consonant_window(z_power_smooth, y, onset_tps,
 
 def plot_band_sweep_summary(results, band_labels, save_dir, subj, cond,
                              win_str, tag):
-    """
-    Grouped bar chart of SVM/RF accuracy per band set + per-class RF recall heatmap.
-
-    Parameters
-    ----------
-    results     : list of ExperimentResult, one per band set
-    band_labels : list of str
-    save_dir    : str
-    subj        : str
-    cond        : str
-    win_str     : str, window description for suptitle
-    tag         : str, used in filename (e.g. 'uniform' or 'consonant')
-    """
     svm_accs = [r.svm_accuracy for r in results]
     rf_accs  = [r.rf_accuracy  for r in results]
     svm_bals = [r.svm_bal_acc  for r in results]
     rf_bals  = [r.rf_bal_acc   for r in results]
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 5))
+    rf_recall   = np.array([[r.rf_per_class.get(syl, 0)  for syl in SYLLABLES] for r in results])
+    svm_recall  = np.array([[r.svm_per_class.get(syl, 0) for syl in SYLLABLES] for r in results])
+    mean_recall = (rf_recall + svm_recall) / 2
 
-    ax = axes[0]
-    x  = np.arange(len(band_labels))
-    w  = 0.2
-    ax.bar(x - 1.5*w, svm_accs, w, label='SVM acc',     color='steelblue',  alpha=0.9)
-    ax.bar(x - 0.5*w, svm_bals, w, label='SVM bal acc', color='steelblue',  alpha=0.45)
-    ax.bar(x + 0.5*w, rf_accs,  w, label='RF acc',      color='darkorange', alpha=0.9)
-    ax.bar(x + 1.5*w, rf_bals,  w, label='RF bal acc',  color='darkorange', alpha=0.45)
-    ax.axhline(1/6, color='gray', linestyle=':', linewidth=0.8, label='Chance (1/6)')
-    ax.set_xticks(x)
-    ax.set_xticklabels(band_labels, rotation=35, ha='right', fontsize=9)
-    ax.set_ylabel('Cross-validated accuracy')
-    ax.set_title('Accuracy by band set')
-    ax.legend(fontsize=8)
-    ax.grid(axis='y', alpha=0.4)
-    ax.set_ylim(0, 1)
+    fig, axes = plt.subplots(2, 2, figsize=(18, 12))
+    ax_acc  = axes[0, 0]
+    ax_rf   = axes[0, 1]
+    ax_svm  = axes[1, 0]
+    ax_mean = axes[1, 1]
 
-    ax = axes[1]
-    recall_matrix = np.array([
-        [r.rf_per_class.get(syl, 0) for syl in SYLLABLES]
-        for r in results
-    ])
-    im = ax.imshow(recall_matrix, aspect='auto', cmap='RdYlGn', vmin=0, vmax=1)
-    ax.set_xticks(range(len(SYLLABLES)))
-    ax.set_xticklabels(SYLLABLES, fontsize=10)
-    ax.set_yticks(range(len(band_labels)))
-    ax.set_yticklabels(band_labels, fontsize=9)
-    ax.set_xlabel('Syllable')
-    ax.set_ylabel('Band set')
-    ax.set_title('Per-class recall (RF)')
-    plt.colorbar(im, ax=ax, label='Recall')
+    # Accuracy bar chart
+    x = np.arange(len(band_labels))
+    w = 0.2
+    ax_acc.bar(x - 1.5*w, svm_accs, w, label='SVM acc',     color='steelblue',  alpha=0.9)
+    ax_acc.bar(x - 0.5*w, svm_bals, w, label='SVM bal acc', color='steelblue',  alpha=0.45)
+    ax_acc.bar(x + 0.5*w, rf_accs,  w, label='RF acc',      color='darkorange', alpha=0.9)
+    ax_acc.bar(x + 1.5*w, rf_bals,  w, label='RF bal acc',  color='darkorange', alpha=0.45)
+    ax_acc.axhline(1/6, color='gray', linestyle=':', linewidth=0.8, label='Chance (1/6)')
+    ax_acc.set_xticks(x)
+    ax_acc.set_xticklabels(band_labels, rotation=35, ha='right', fontsize=9)
+    ax_acc.set_ylabel('Cross-validated accuracy')
+    ax_acc.set_title('Accuracy by band set')
+    ax_acc.legend(fontsize=8)
+    ax_acc.grid(axis='y', alpha=0.4)
+    ax_acc.set_ylim(0, 1)
 
-    for i in range(len(band_labels)):
-        for j in range(len(SYLLABLES)):
-            val   = recall_matrix[i, j]
-            color = 'white' if val < 0.3 or val > 0.8 else 'black'
-            ax.text(j, i, f'{val:.2f}', ha='center', va='center',
-                    fontsize=8, color=color)
+    def _heatmap(ax, matrix, title):
+        im = ax.imshow(matrix, aspect='auto', cmap='RdYlGn', vmin=0, vmax=1)
+        ax.set_xticks(range(len(SYLLABLES)))
+        ax.set_xticklabels(SYLLABLES, fontsize=10)
+        ax.set_yticks(range(len(band_labels)))
+        ax.set_yticklabels(band_labels, fontsize=9)
+        ax.set_xlabel('Syllable')
+        ax.set_ylabel('Band set')
+        ax.set_title(title)
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label='Recall')
+        for i in range(len(band_labels)):
+            for j in range(len(SYLLABLES)):
+                val   = matrix[i, j]
+                color = 'white' if val < 0.25 or val > 0.75 else 'black'
+                ax.text(j, i, f'{val:.2f}', ha='center', va='center',
+                        fontsize=7, color=color)
+
+    _heatmap(ax_rf,   rf_recall,   'RF per-class recall')
+    _heatmap(ax_svm,  svm_recall,  'SVM per-class recall')
+    _heatmap(ax_mean, mean_recall, 'Mean(RF+SVM) per-class recall')
 
     fig.suptitle(
         f'{subj} | Band sweep ({tag}) — brain ICs, z_power_smooth\n'
         f'Window: {win_str}',
-        fontsize=11)
+        fontsize=12)
     plt.tight_layout()
 
-    fpath = os.path.join(save_dir,
-        f'{subj}_{cond}_band_sweep_{tag}_summary.png')
+    fpath = os.path.join(save_dir, f'{subj}_{cond}_band_sweep_{tag}_summary.png')
     fig.savefig(fpath, dpi=150, bbox_inches='tight')
     plt.close(fig)
     print(f'\n  Saved band sweep summary: {fpath}')

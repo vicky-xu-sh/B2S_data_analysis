@@ -156,8 +156,11 @@ def derive_best_overall_pre_onset(sweep_results, strategy='rf'):
 
 def plot_W4_sweep_summary(sweep_results, save_dir, subj, cond, speech_window_ms):
     """
-    Two-panel plot: overall accuracy (SVM+RF) and per-class RF recall vs. pre-onset.
-
+    Two separate figures:
+      Figure 1 — overall accuracy (SVM + RF) vs. pre-onset
+      Figure 2 — per-class recall vs. pre-onset, 1×3 subplots by consonant group
+                 (gi/gu | mi/mu | si/su), solid=RF dashed=SVM
+ 
     Parameters
     ----------
     sweep_results    : list of (pre_ms, ExperimentResult)
@@ -171,10 +174,14 @@ def plot_W4_sweep_summary(sweep_results, save_dir, subj, cond, speech_window_ms)
     rf_accs  = [r[1].rf_accuracy  for r in sweep_results]
     svm_bals = [r[1].svm_bal_acc  for r in sweep_results]
     rf_bals  = [r[1].rf_bal_acc   for r in sweep_results]
-
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-
-    ax = axes[0]
+ 
+    title_base = (f'{subj} | W4 pre-speech sweep — brain ICs, z_power_smooth\n'
+                  f'Window end fixed at onset + {speech_window_ms} ms')
+ 
+    # -------------------------------------------------------------------
+    # Figure 1 — overall accuracy
+    # -------------------------------------------------------------------
+    fig, ax = plt.subplots(figsize=(7, 5))
     ax.plot(pre_vals, svm_accs, 'o-',  label='SVM acc',     color='steelblue')
     ax.plot(pre_vals, svm_bals, 'o--', label='SVM bal acc', color='steelblue',  alpha=0.5)
     ax.plot(pre_vals, rf_accs,  's-',  label='RF acc',      color='darkorange')
@@ -186,32 +193,48 @@ def plot_W4_sweep_summary(sweep_results, save_dir, subj, cond, speech_window_ms)
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.4)
     ax.set_ylim(0, 1)
-
-    ax     = axes[1]
-    colors = plt.cm.tab10(np.linspace(0, 0.6, len(SYLLABLES)))
-    for si, syl in enumerate(SYLLABLES):
-        rf_recalls  = [r[1].rf_per_class.get(syl, 0)  for r in sweep_results]
-        svm_recalls = [r[1].svm_per_class.get(syl, 0) for r in sweep_results]
-        ax.plot(pre_vals, rf_recalls,  'o-',  label=f'{syl} RF',  color=colors[si])
-        ax.plot(pre_vals, svm_recalls, 'o--', label=f'{syl} SVM', color=colors[si], alpha=0.5)
-    ax.axhline(1/6, color='gray', linestyle=':', linewidth=0.8, label='Chance')
-    ax.set_xlabel('Pre-speech onset included (ms)')
-    ax.set_ylabel('Per-class recall')
-    ax.set_title('Per-class recall vs. pre-speech onset (solid=RF, dashed=SVM)')
-    ax.legend(fontsize=7, ncol=2)
-    ax.grid(True, alpha=0.4)
-    ax.set_ylim(0, 1)
-
-    fig.suptitle(
-        f'{subj} | W4 pre-speech sweep — brain ICs, z_power_smooth\n'
-        f'Window end fixed at onset + {speech_window_ms} ms',
-        fontsize=11)
+    fig.suptitle(title_base, fontsize=10)
     plt.tight_layout()
-
-    fpath = os.path.join(save_dir, f'{subj}_{cond}_W4_sweep_summary.png')
-    fig.savefig(fpath, dpi=150, bbox_inches='tight')
+ 
+    fpath1 = os.path.join(save_dir, f'{subj}_{cond}_W4_sweep_accuracy.png')
+    fig.savefig(fpath1, dpi=150, bbox_inches='tight')
     plt.close(fig)
-    print(f'\n  Saved sweep summary: {fpath}')
+    print(f'\n  Saved sweep accuracy plot: {fpath1}')
+ 
+    # -------------------------------------------------------------------
+    # Figure 2 — per-class recall, 1×3 by consonant group
+    # -------------------------------------------------------------------
+    consonant_groups = [
+        ('Velar stops',         ['gi', 'gu'], ['#1f77b4', '#aec7e8']),
+        ('Bilabial nasals',     ['mi', 'mu'], ['#2ca02c', '#98df8a']),
+        ('Alveolar fricatives', ['si', 'su'], ['#9467bd', '#c5b0d5']),
+    ]
+ 
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5), sharey=True)
+ 
+    for ax, (group_title, syls, colors) in zip(axes, consonant_groups):
+        for syl, color in zip(syls, colors):
+            rf_recalls  = [r[1].rf_per_class.get(syl, 0)  for r in sweep_results]
+            svm_recalls = [r[1].svm_per_class.get(syl, 0) for r in sweep_results]
+            ax.plot(pre_vals, rf_recalls,  'o-',  label=f'{syl} RF',
+                    color=color, linewidth=1.8)
+            ax.plot(pre_vals, svm_recalls, 'o--', label=f'{syl} SVM',
+                    color=color, alpha=0.55, linewidth=1.4)
+        ax.axhline(1/6, color='gray', linestyle=':', linewidth=0.8, label='Chance')
+        ax.set_xlabel('Pre-speech onset included (ms)')
+        ax.set_title(group_title)
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.4)
+        ax.set_ylim(0, 1)
+ 
+    axes[0].set_ylabel('Per-class recall  (solid=RF, dashed=SVM)')
+    fig.suptitle(title_base, fontsize=10)
+    plt.tight_layout()
+ 
+    fpath2 = os.path.join(save_dir, f'{subj}_{cond}_W4_sweep_recall_by_consonant.png')
+    fig.savefig(fpath2, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f'  Saved sweep recall plot:    {fpath2}')
 
 
 # ---------------------------------------------------------------------------
