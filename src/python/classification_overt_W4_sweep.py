@@ -13,14 +13,16 @@ from the sweep results using two different recommendation strategies:
   Combined strategy  : pre-onset that maximises mean(RF + SVM) recall
 
   Exp A_RF       — uniform best overall pre-onset (RF-only derived)
+  Exp A_SVM      — uniform best overall pre-onset (SVM-only derived)
   Exp A_combined — uniform best overall pre-onset (combined derived)
   Exp B_RF       — consonant-group-specific pre-onset (RF-only derived)
+  Exp B_SVM      — consonant-group-specific pre-onset (SVM-only derived)
   Exp B_combined — consonant-group-specific pre-onset (combined derived)
 
   For Exp B: total window = max(group_pre_onsets) + CONSONANT_POST_BASE_MS
              post-onset per group = total_window - group_pre_onset
 
-IC set : brain ICs only
+IC set : defined keep ICs only
 Feature: z_power_smooth
 Bands  : all bands
 
@@ -33,8 +35,8 @@ Usage
         --subj subj-02 \\
         --input-dir  /path/to/04_processed/ \\
         --output-dir /path/to/results/ \\
-        --overt-brain-ics 4 7 14 21 22 32 \\
-        --overt-bad-epochs 1 111 \\
+        --overt-keep-ics ... \\
+        --overt-bad-epochs ... \\
         --speech-window-ms 500
 
     # Skip sweep, run Exp A + Exp B with manually specified values
@@ -87,7 +89,7 @@ def _group_mean_recall(result, group_labels_1idx, strategy='rf'):
     ----------
     result           : ExperimentResult
     group_labels_1idx: list of int, 1-indexed class labels
-    strategy         : 'rf' | 'combined' — which classifier(s) to use
+    strategy         : 'rf' | 'svm' | 'combined' — which classifier(s) to use
 
     Returns
     -------
@@ -98,7 +100,12 @@ def _group_mean_recall(result, group_labels_1idx, strategy='rf'):
         syl   = SYLLABLES[lbl - 1]
         rf_r  = result.rf_per_class.get(syl, 0)
         svm_r = result.svm_per_class.get(syl, 0)
-        recalls.append(rf_r if strategy == 'rf' else (rf_r + svm_r) / 2)
+        if strategy == 'rf':
+            recalls.append(rf_r)
+        elif strategy == 'svm':
+            recalls.append(svm_r)
+        else:
+            recalls.append((rf_r + svm_r) / 2)
     return float(np.mean(recalls))
 
 
@@ -109,7 +116,7 @@ def derive_consonant_pre_onsets(sweep_results, strategy='rf'):
     Parameters
     ----------
     sweep_results : list of (pre_ms, ExperimentResult)
-    strategy      : 'rf' | 'combined'
+    strategy      : 'rf' | 'svm' | 'combined'
 
     Returns
     -------
@@ -132,17 +139,34 @@ def derive_best_overall_pre_onset(sweep_results, strategy='rf'):
     Parameters
     ----------
     sweep_results : list of (pre_ms, ExperimentResult)
-    strategy      : 'rf' | 'combined'
+    strategy      : 'rf' | 'svm' | 'combined'
 
     Returns
     -------
     int: best pre-onset in ms
     """
     pre_arr     = np.array([r[0] for r in sweep_results])
-    mean_recall = np.array([
-        np.mean([
-            r.rf_per_class.get(syl, 0) if strategy == 'rf'
-            else (r.rf_per_class.get(syl, 0) + r.svm_per_class.get(syl, 0)) / 2
+
+    if strategy == 'rf':
+        mean_recall = np.array([
+            np.mean([
+                r.rf_per_class.get(syl, 0)
+                for syl in SYLLABLES
+            ])
+            for _, r in sweep_results
+        ])
+    elif strategy == 'svm':
+        mean_recall = np.array([
+            np.mean([
+                r.svm_per_class.get(syl, 0)
+                for syl in SYLLABLES
+            ])
+            for _, r in sweep_results
+        ])
+    else:  # combined
+        mean_recall = np.array([
+            np.mean([
+            (r.rf_per_class.get(syl, 0) + r.svm_per_class.get(syl, 0)) / 2
             for syl in SYLLABLES
         ])
         for _, r in sweep_results
@@ -175,7 +199,7 @@ def plot_W4_sweep_summary(sweep_results, save_dir, subj, cond, speech_window_ms)
     svm_bals = [r[1].svm_bal_acc  for r in sweep_results]
     rf_bals  = [r[1].rf_bal_acc   for r in sweep_results]
  
-    title_base = (f'{subj} | W4 pre-speech sweep — brain ICs, z_power_smooth\n'
+    title_base = (f'{subj} | W4 pre-speech sweep — keep ICs, z_power_smooth\n'
                   f'Window end fixed at onset + {speech_window_ms} ms')
  
     # -------------------------------------------------------------------
@@ -242,8 +266,8 @@ def plot_W4_sweep_summary(sweep_results, save_dir, subj, cond, speech_window_ms)
 # ---------------------------------------------------------------------------
 
 def print_W4_recommendation(sweep_results,
-                             best_overall_rf, best_overall_combined,
-                             consonant_rf, consonant_combined):
+                            best_overall_rf, best_overall_svm, best_overall_combined,
+                            consonant_rf, consonant_svm, consonant_combined):
     """
     Print both RF-only and combined recommendations side by side.
 
@@ -251,8 +275,10 @@ def print_W4_recommendation(sweep_results,
     ----------
     sweep_results         : list of (pre_ms, ExperimentResult)
     best_overall_rf       : int, best overall pre-onset via RF-only
+    best_overall_svm      : int, best overall pre-onset via SVM-only
     best_overall_combined : int, best overall pre-onset via combined
     consonant_rf          : dict {group_name: best_pre_onset_ms} via RF-only
+    consonant_svm         : dict {group_name: best_pre_onset_ms} via SVM-only
     consonant_combined    : dict {group_name: best_pre_onset_ms} via combined
     """
     pre_arr = np.array([r[0] for r in sweep_results])
@@ -269,24 +295,29 @@ def print_W4_recommendation(sweep_results,
 
     # Per-consonant-group
     print('\n  Per-consonant-group (mean recall across pair):')
-    print(f'  {"Group":28s}  {"RF-only best":>14s}  {"RF recall":>10s}  '
-          f'{"Combined best":>14s}  {"Avg recall":>10s}')
+    print(f'  {"Group":28s}  {"RF best":>10s}  {"RF recall":>10s}  '
+          f'{"SVM best":>10s}  {"SVM recall":>10s}  '
+          f'{"Combined best":>10s}  {"Avg recall":>10s}')
     print(f'  {"-"*80}')
     for group_name, label_1idx in CONSONANT_GROUPS.items():
         syls = [SYLLABLES[l - 1] for l in label_1idx]
         label = f'{group_name} ({"/".join(syls)})'
 
         rf_ms  = consonant_rf[group_name]
+        svm_ms = consonant_svm[group_name]
         comb_ms = consonant_combined[group_name]
 
         rf_idx   = np.where(pre_arr == rf_ms)[0][0]
+        svm_idx  = np.where(pre_arr == svm_ms)[0][0]
         comb_idx = np.where(pre_arr == comb_ms)[0][0]
 
         rf_recall   = np.mean([rf_arr[rf_idx,    l - 1] for l in label_1idx])
+        svm_recall  = np.mean([svm_arr[svm_idx,   l - 1] for l in label_1idx])
         comb_recall = np.mean([avg_arr[comb_idx, l - 1] for l in label_1idx])
 
-        print(f'  {label:28s}  {rf_ms:>12d} ms  {rf_recall:>10.3f}  '
-              f'{comb_ms:>12d} ms  {comb_recall:>10.3f}')
+        print(f'  {label:28s}  {rf_ms:>10d} ms  {rf_recall:>10.3f}  '
+              f'{svm_ms:>10d} ms  {svm_recall:>10.3f}  '
+              f'{comb_ms:>10d} ms  {comb_recall:>10.3f}')
 
     # Per-syllable
     print('\n  Per-syllable:')
@@ -304,17 +335,22 @@ def print_W4_recommendation(sweep_results,
 
     # Overall
     rf_mean   = rf_arr.mean(axis=1)
+    svm_mean  = svm_arr.mean(axis=1)
     comb_mean = avg_arr.mean(axis=1)
     rf_overall_idx   = np.where(pre_arr == best_overall_rf)[0][0]
+    svm_overall_idx  = np.where(pre_arr == best_overall_svm)[0][0]
     comb_overall_idx = np.where(pre_arr == best_overall_combined)[0][0]
     print(f'\n  Best overall:')
     print(f'    RF-only   → {best_overall_rf} ms  '
           f'(mean RF recall = {rf_mean[rf_overall_idx]:.3f})')
+    print(f'    SVM-only  → {best_overall_svm} ms  '
+          f'(mean SVM recall = {svm_mean[svm_overall_idx]:.3f})')
     print(f'    Combined  → {best_overall_combined} ms  '
           f'(mean avg recall = {comb_mean[comb_overall_idx]:.3f})')
 
     # Exp B window summary
     for label, consonant_dict in [('RF-only', consonant_rf),
+                                   ('SVM-only', consonant_svm),
                                    ('Combined', consonant_combined)]:
         total_win = max(consonant_dict.values()) + CONSONANT_POST_BASE_MS
         print(f'\n  Exp B windows ({label}, total = {total_win} ms):')
@@ -333,20 +369,22 @@ def print_W4_recommendation(sweep_results,
 # ---------------------------------------------------------------------------
 
 def run_exp_A(z_power_smooth, y, onset_tps,
-              brain_ics_0idx, ic_labels_brain,
+              keep_ics_0idx, ic_labels,
               speech_window_tp, speech_window_ms,
               best_overall_ms, strategy_tag,
-              save_dir, subj, cond_code, inner_jobs):
+              save_dir, subj, cond_code, inner_jobs,
+              fix_svm_C=None, fix_rf_depth=None, fix_rf_features=None,
+              fix_rf_estimators=None, fix_rf_split=None):
     """
     Exp A — uniform best overall pre-onset for all trials.
 
     Parameters
     ----------
-    strategy_tag : str, 'RF' or 'combined' — used in experiment name
+    strategy_tag : str, 'RF' or 'SVM' or 'combined' — used in experiment name
     """
     pre_tp   = int(best_overall_ms / 1000 * FS)
     win_tp   = pre_tp + speech_window_tp
-    exp_name = (f'W4_ExpA_{strategy_tag}_brainIC_zpower_'
+    exp_name = (f'W4_ExpA_{strategy_tag}_keepIC_zpower_'
                 f'pre{best_overall_ms}ms_speech{speech_window_ms}ms')
     t_vec    = np.linspace(-best_overall_ms, speech_window_ms, win_tp)
 
@@ -357,38 +395,43 @@ def run_exp_A(z_power_smooth, y, onset_tps,
     print(f'{"="*60}')
 
     X = build_X_speech_window(
-        z_power_smooth, brain_ics_0idx, onset_tps,
+        z_power_smooth, keep_ics_0idx, onset_tps,
         pre_onset_tp=pre_tp, post_onset_tp=speech_window_tp)
 
     r, rf_model = run_classifiers(
         exp_name, X, y, save_dir, subj, cond_code,
-        ic_set='brain', band_set='all_bands',
+        ic_set='all_keep', band_set='all_bands',
         feature='z_power_smooth',
         window=f'onset-{best_overall_ms}ms_to_onset+{speech_window_ms}ms',
-        inner_n_jobs=inner_jobs)
+        inner_n_jobs=inner_jobs,
+        fix_svm_C=fix_svm_C, fix_rf_depth=fix_rf_depth,
+        fix_rf_features=fix_rf_features, fix_rf_estimators=fix_rf_estimators,
+        fix_rf_split=fix_rf_split)
 
     plot_feature_importance(
-        rf_model, len(brain_ics_0idx), z_power_smooth.shape[1], win_tp,
-        ic_labels_brain, t_vec,
+        rf_model, len(keep_ics_0idx), z_power_smooth.shape[1], win_tp,
+        ic_labels, t_vec,
         save_dir, subj, cond_code, exp_name)
 
     return r
 
 
 def run_exp_B(z_power_smooth, y, onset_tps,
-              brain_ics_0idx, ic_labels_brain,
+              keep_ics_0idx, ic_labels,
               consonant_pre_onsets_ms, strategy_tag,
-              save_dir, subj, cond_code, inner_jobs):
+              save_dir, subj, cond_code, inner_jobs,
+              fix_svm_C=None, fix_rf_depth=None, fix_rf_features=None,
+              fix_rf_estimators=None, fix_rf_split=None):
     """
     Exp B — consonant-group-specific pre-onset.
 
     Parameters
     ----------
     consonant_pre_onsets_ms : dict {group_name: pre_onset_ms}
-    strategy_tag            : str, 'RF' or 'combined'
+    strategy_tag            : str, 'RF' or 'SVM' or 'combined'
     """
     nBands      = z_power_smooth.shape[1]
-    nICs        = len(brain_ics_0idx)
+    nICs        = len(keep_ics_0idx)
     nTrials     = z_power_smooth.shape[-1]
     total_T     = z_power_smooth.shape[2]
     bands       = list(range(nBands))
@@ -432,27 +475,30 @@ def run_exp_B(z_power_smooth, y, onset_tps,
                 continue
 
             X_b[:, :, :, i] = z_power_smooth[
-                np.ix_(brain_ics_0idx, bands, list(range(start, end)), [i])
+                np.ix_(keep_ics_0idx, bands, list(range(start, end)), [i])
             ][:, :, :, 0]
 
     X_b = X_b.transpose(3, 0, 1, 2).reshape(nTrials, -1)
 
     groups_str = '_'.join([f'{g[:3]}{v}ms'
                            for g, v in consonant_pre_onsets_ms.items()])
-    exp_name = f'W4_ExpB_{strategy_tag}_brainIC_zpower_{groups_str}'
+    exp_name = f'W4_ExpB_{strategy_tag}_keepIC_zpower_{groups_str}'
 
     print(f'\n  [{exp_name}]  X={X_b.shape}')
 
     r, rf_model = run_classifiers(
         exp_name, X_b, y, save_dir, subj, cond_code,
-        ic_set='brain', band_set='all_bands',
+        ic_set='all_keep', band_set='all_bands',
         feature='z_power_smooth',
         window=f'consonant_specific_{strategy_tag}_total{total_win_ms}ms',
-        inner_n_jobs=inner_jobs)
+        inner_n_jobs=inner_jobs,
+        fix_svm_C=fix_svm_C, fix_rf_depth=fix_rf_depth,
+        fix_rf_features=fix_rf_features, fix_rf_estimators=fix_rf_estimators,
+        fix_rf_split=fix_rf_split)
 
     plot_feature_importance(
         rf_model, nICs, nBands, total_win_tp,
-        ic_labels_brain, t_vec,
+        ic_labels, t_vec,
         save_dir, subj, cond_code, exp_name)
 
     return r
@@ -474,10 +520,10 @@ def main():
         help='Directory containing analytic .mat files')
     parser.add_argument(
         '--output-dir', required=True, type=str,
-        help='Output directory for figures and CSVs')
+        help='Output root directory for figures and CSVs')
     parser.add_argument(
-        '--overt-brain-ics', required=True, type=int, nargs='+',
-        help='1-indexed brain ICs for overt condition')
+        '--overt-keep-ics', required=True, type=int, nargs='+',
+        help='1-indexed keep ICs for overt condition')
     parser.add_argument(
         '--overt-bad-epochs', default=[], type=int, nargs='*',
         help='1-indexed bad epochs to reject')
@@ -502,6 +548,22 @@ def main():
         help='[--run-final-only] Pre-onset per consonant group for Exp B (ms), '
              'ordered: stop (gi/gu), nasal (mi/mu), fricative (si/su).')
 
+    parser.add_argument(
+        '--fix-svm-C', type=float, default=None,
+        help='Fixed SVM C (from W1a). Skips gridsearch when all fix-* params provided.')
+    parser.add_argument(
+        '--fix-rf-depth', type=str, default=None,
+        help='Fixed RF max_depth (int or "None" for no limit).')
+    parser.add_argument(
+        '--fix-rf-features', type=str, default=None,
+        help='Fixed RF max_features ("sqrt" or "log2").')
+    parser.add_argument(
+        '--fix-rf-estimators', type=int, default=None,
+        help='Fixed RF n_estimators.')
+    parser.add_argument(
+        '--fix-rf-split', type=int, default=None,
+        help='Fixed RF min_samples_split.')
+
     args = parser.parse_args()
 
     if args.run_final_only:
@@ -515,10 +577,17 @@ def main():
     cond_label = 'spoken'
     inner_jobs = -1 if args.n_jobs == 1 else 1
 
-    brain_ics_1idx  = args.overt_brain_ics
-    brain_ics_0idx  = [ic - 1 for ic in brain_ics_1idx]
+    fix_svm_C         = args.fix_svm_C
+    fix_rf_depth      = (None if args.fix_rf_depth in (None, 'None')
+                         else int(args.fix_rf_depth))
+    fix_rf_features   = args.fix_rf_features
+    fix_rf_estimators = args.fix_rf_estimators
+    fix_rf_split      = args.fix_rf_split
+
+    keep_ics_1idx  = args.overt_keep_ics
+    keep_ics_0idx  = [ic - 1 for ic in keep_ics_1idx]
     bad_epochs      = args.overt_bad_epochs
-    ic_labels_brain = [f'IC{ic}' for ic in brain_ics_1idx]
+    ic_labels = [f'IC{ic}' for ic in keep_ics_1idx]
 
     save_dir = os.path.join(args.output_dir, subj, cond_label, 'W4_sweep')
     os.makedirs(save_dir, exist_ok=True)
@@ -529,7 +598,7 @@ def main():
     print(f'\n{"="*60}')
     print(f'  Subject:   {subj}')
     print(f'  Condition: {cond_label} ({cond_code})')
-    print(f'  Brain ICs: {brain_ics_1idx} ({len(brain_ics_1idx)} total)')
+    print(f'  Keep ICs: {keep_ics_1idx} ({len(keep_ics_1idx)} total)')
     print(f'  Bad epochs: {bad_epochs if bad_epochs else "None"}')
     if args.run_final_only:
         print('  Mode: final experiments only (sweep skipped)')
@@ -595,26 +664,29 @@ def main():
         def _sweep_one(pre_ms):
             pre_tp   = int(pre_ms / 1000 * FS)
             win_tp   = pre_tp + speech_window_tp
-            exp_name = f'W4_brainIC_zpower_pre{pre_ms}ms_speech{speech_window_ms}ms'
+            exp_name = f'W4_keepIC_zpower_pre{pre_ms}ms_speech{speech_window_ms}ms'
             t_vec    = np.linspace(-pre_ms, speech_window_ms, win_tp)
 
             print(f'\n  [W4 pre={pre_ms}ms]  '
                   f'total window={win_tp} samples ({pre_ms + speech_window_ms} ms)')
             X = build_X_speech_window(
-                z_power_smooth, brain_ics_0idx, onset_tps,
+                z_power_smooth, keep_ics_0idx, onset_tps,
                 pre_onset_tp=pre_tp, post_onset_tp=speech_window_tp)
 
             r, rf_model = run_classifiers(
                 exp_name, X, y, save_dir, subj, cond_code,
-                ic_set='brain', band_set='all_bands',
+                ic_set='all_keep', band_set='all_bands',
                 feature='z_power_smooth',
                 window=f'onset-{pre_ms}ms_to_onset+{speech_window_ms}ms',
-                inner_n_jobs=inner_jobs)
+                inner_n_jobs=inner_jobs,
+                fix_svm_C=fix_svm_C, fix_rf_depth=fix_rf_depth,
+                fix_rf_features=fix_rf_features, fix_rf_estimators=fix_rf_estimators,
+                fix_rf_split=fix_rf_split)
 
             plot_feature_importance(
                 rf_model,
-                len(brain_ics_0idx), z_power_smooth.shape[1], win_tp,
-                ic_labels_brain, t_vec,
+                len(keep_ics_0idx), z_power_smooth.shape[1], win_tp,
+                ic_labels, t_vec,
                 save_dir, subj, cond_code, exp_name)
 
             return pre_ms, r
@@ -622,16 +694,21 @@ def main():
         if args.n_jobs == 1:
             sweep_results = [_sweep_one(pre_ms) for pre_ms in W4_SWEEP_MS]
         else:
-            sweep_results = joblib.Parallel(n_jobs=args.n_jobs, prefer='loky')(
+            sweep_results = joblib.Parallel(n_jobs=args.n_jobs, prefer='processes')(
                 joblib.delayed(_sweep_one)(pre_ms) for pre_ms in W4_SWEEP_MS)
 
+        figure_save_dir = os.path.join(args.output_dir, subj, cond_label, 'summary_figures')
+        os.makedirs(figure_save_dir, exist_ok=True)
+
         plot_W4_sweep_summary(
-            sweep_results, save_dir, subj, cond_code, speech_window_ms)
+            sweep_results, figure_save_dir, subj, cond_code, speech_window_ms)
 
         # Derive both recommendation strategies
         best_overall_rf       = derive_best_overall_pre_onset(sweep_results, 'rf')
+        best_overall_svm     = derive_best_overall_pre_onset(sweep_results, 'svm')
         best_overall_combined = derive_best_overall_pre_onset(sweep_results, 'combined')
         consonant_rf          = derive_consonant_pre_onsets(sweep_results, 'rf')
+        consonant_svm        = derive_consonant_pre_onsets(sweep_results, 'svm')
         consonant_combined    = derive_consonant_pre_onsets(sweep_results, 'combined')
 
         # Save sweep table with SVM + RF per-class recall
@@ -664,8 +741,8 @@ def main():
     if sweep_results:
         print_W4_recommendation(
             sweep_results,
-            best_overall_rf, best_overall_combined,
-            consonant_rf, consonant_combined)
+            best_overall_rf, best_overall_svm, best_overall_combined,
+            consonant_rf, consonant_svm, consonant_combined)
 
     # -------------------------------------------------------------------
     # Four final experiments
@@ -680,29 +757,61 @@ def main():
 
         final_results.append(run_exp_A(
             z_power_smooth, y, onset_tps,
-            brain_ics_0idx, ic_labels_brain,
+            keep_ics_0idx, ic_labels,
             speech_window_tp, speech_window_ms,
             best_overall_rf, 'RF',
-            save_dir, subj, cond_code, inner_jobs))
+            save_dir, subj, cond_code, inner_jobs,
+            fix_svm_C=fix_svm_C, fix_rf_depth=fix_rf_depth,
+            fix_rf_features=fix_rf_features, fix_rf_estimators=fix_rf_estimators,
+            fix_rf_split=fix_rf_split))
 
         final_results.append(run_exp_A(
             z_power_smooth, y, onset_tps,
-            brain_ics_0idx, ic_labels_brain,
+            keep_ics_0idx, ic_labels,
+            speech_window_tp, speech_window_ms,
+            best_overall_svm, 'SVM',
+            save_dir, subj, cond_code, inner_jobs,
+            fix_svm_C=fix_svm_C, fix_rf_depth=fix_rf_depth,
+            fix_rf_features=fix_rf_features, fix_rf_estimators=fix_rf_estimators,
+            fix_rf_split=fix_rf_split))
+
+
+        final_results.append(run_exp_A(
+            z_power_smooth, y, onset_tps,
+            keep_ics_0idx, ic_labels,
             speech_window_tp, speech_window_ms,
             best_overall_combined, 'combined',
-            save_dir, subj, cond_code, inner_jobs))
+            save_dir, subj, cond_code, inner_jobs,
+            fix_svm_C=fix_svm_C, fix_rf_depth=fix_rf_depth,
+            fix_rf_features=fix_rf_features, fix_rf_estimators=fix_rf_estimators,
+            fix_rf_split=fix_rf_split))
 
         final_results.append(run_exp_B(
             z_power_smooth, y, onset_tps,
-            brain_ics_0idx, ic_labels_brain,
+            keep_ics_0idx, ic_labels,
             consonant_rf, 'RF',
-            save_dir, subj, cond_code, inner_jobs))
+            save_dir, subj, cond_code, inner_jobs,
+            fix_svm_C=fix_svm_C, fix_rf_depth=fix_rf_depth,
+            fix_rf_features=fix_rf_features, fix_rf_estimators=fix_rf_estimators,
+            fix_rf_split=fix_rf_split))
 
         final_results.append(run_exp_B(
             z_power_smooth, y, onset_tps,
-            brain_ics_0idx, ic_labels_brain,
+            keep_ics_0idx, ic_labels,
+            consonant_svm, 'SVM',
+            save_dir, subj, cond_code, inner_jobs,
+            fix_svm_C=fix_svm_C, fix_rf_depth=fix_rf_depth,
+            fix_rf_features=fix_rf_features, fix_rf_estimators=fix_rf_estimators,
+            fix_rf_split=fix_rf_split))
+
+        final_results.append(run_exp_B(
+            z_power_smooth, y, onset_tps,
+            keep_ics_0idx, ic_labels,
             consonant_combined, 'combined',
-            save_dir, subj, cond_code, inner_jobs))
+            save_dir, subj, cond_code, inner_jobs,
+            fix_svm_C=fix_svm_C, fix_rf_depth=fix_rf_depth,
+            fix_rf_features=fix_rf_features, fix_rf_estimators=fix_rf_estimators,
+            fix_rf_split=fix_rf_split))
 
     else:
         best_overall = args.best_overall_pre_onset_ms
@@ -713,16 +822,22 @@ def main():
 
         final_results.append(run_exp_A(
             z_power_smooth, y, onset_tps,
-            brain_ics_0idx, ic_labels_brain,
+            keep_ics_0idx, ic_labels,
             speech_window_tp, speech_window_ms,
             best_overall, 'manual',
-            save_dir, subj, cond_code, inner_jobs))
+            save_dir, subj, cond_code, inner_jobs,
+            fix_svm_C=fix_svm_C, fix_rf_depth=fix_rf_depth,
+            fix_rf_features=fix_rf_features, fix_rf_estimators=fix_rf_estimators,
+            fix_rf_split=fix_rf_split))
 
         final_results.append(run_exp_B(
             z_power_smooth, y, onset_tps,
-            brain_ics_0idx, ic_labels_brain,
+            keep_ics_0idx, ic_labels,
             best_consonant, 'manual',
-            save_dir, subj, cond_code, inner_jobs))
+            save_dir, subj, cond_code, inner_jobs,
+            fix_svm_C=fix_svm_C, fix_rf_depth=fix_rf_depth,
+            fix_rf_features=fix_rf_features, fix_rf_estimators=fix_rf_estimators,
+            fix_rf_split=fix_rf_split))
 
     print_and_save_summary(
         final_results, save_dir, subj, cond_code, tag='W4_final')

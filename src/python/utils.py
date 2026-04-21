@@ -327,25 +327,36 @@ def _safe_name(s):
  
 def run_classifiers(name, X, y, save_dir, subj, cond,
                     ic_set, band_set, feature, window,
-                    inner_n_jobs=-1):
+                    inner_n_jobs=-1,
+                    fix_svm_C=None,
+                    fix_rf_depth=None,
+                    fix_rf_features=None,
+                    fix_rf_estimators=None,
+                    fix_rf_split=None):
     """
-    Run SVM + RF gridsearch, save confusion matrices, return ExperimentResult
-    and the fitted RF model (for feature importance).
- 
+    Run SVM + RF (gridsearch or fixed params), save confusion matrices, return
+    ExperimentResult and the fitted RF model (for feature importance).
+
     Parameters
     ----------
-    name          : str, experiment label
-    X             : np.ndarray [trials x features]
-    y             : np.ndarray [trials], integer class labels (1-indexed)
-    save_dir      : str, output directory
-    subj          : str
-    cond          : str, condition code e.g. 'sp'
-    ic_set        : str, label for IC set used
-    band_set      : str, label for band set used
-    feature       : str, label for feature type
-    window        : str, label for time window
-    inner_n_jobs  : int, n_jobs for GridSearchCV
- 
+    name              : str, experiment label
+    X                 : np.ndarray [trials x features]
+    y                 : np.ndarray [trials], integer class labels (1-indexed)
+    save_dir          : str, output directory
+    subj              : str
+    cond              : str, condition code e.g. 'sp'
+    ic_set            : str, label for IC set used
+    band_set          : str, label for band set used
+    feature           : str, label for feature type
+    window            : str, label for time window
+    inner_n_jobs      : int, n_jobs for GridSearchCV
+    fix_svm_C         : float or None — fixed SVM C; skips gridsearch when all
+                        five fix_* params are provided
+    fix_rf_depth      : int or None   — fixed RF max_depth (None = no limit)
+    fix_rf_features   : str or None   — fixed RF max_features ('sqrt' or 'log2')
+    fix_rf_estimators : int or None   — fixed RF n_estimators
+    fix_rf_split      : int or None   — fixed RF min_samples_split
+
     Returns
     -------
     result    : ExperimentResult
@@ -355,51 +366,85 @@ def run_classifiers(name, X, y, save_dir, subj, cond,
     result = ExperimentResult(
         name=name, feature=feature, ic_set=ic_set,
         band_set=band_set, window=window, n_features=X.shape[1])
- 
+
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
- 
+
+    # Fixed-param mode: all non-depth RF params + SVM C must be provided.
+    # fix_rf_depth may be None (= no depth limit) even in fixed mode.
+    fixed_mode = (fix_svm_C is not None and
+                  fix_rf_features is not None and
+                  fix_rf_estimators is not None and
+                  fix_rf_split is not None)
+
     # --- SVM ---
     print(f"    [SVM] {name} ...")
-    gs_svm, _ = _make_svm_pipeline(inner_n_jobs)
-    gs_svm.fit(X, y)
-    best_svm   = gs_svm.best_estimator_
+    if fixed_mode:
+        svm_pipeline = Pipeline([('scaler', StandardScaler()),
+                                  ('svm', SVC(C=fix_svm_C, kernel='linear'))])
+        svm_pipeline.fit(X, y)
+        best_svm        = svm_pipeline
+        svm_best_params = {'svm__C': fix_svm_C, 'svm__kernel': 'linear'}
+    else:
+        gs_svm, _       = _make_svm_pipeline(inner_n_jobs)
+        gs_svm.fit(X, y)
+        best_svm        = gs_svm.best_estimator_
+        svm_best_params = gs_svm.best_params_
+
     y_pred_svm = cross_val_predict(best_svm, X, y, cv=cv, n_jobs=inner_n_jobs)
     acc_svm    = (y_pred_svm == y).mean()
     bal_svm    = balanced_accuracy_score(y, y_pred_svm)
- 
-    result.svm_best_params = gs_svm.best_params_
+
+    result.svm_best_params = svm_best_params
     result.svm_accuracy    = acc_svm
     result.svm_bal_acc     = bal_svm
     result.svm_per_class   = _per_class_recall(y, y_pred_svm)
     result.svm_precision   = _per_class_precision(y, y_pred_svm)
- 
+
     _save_confusion_matrix(
         y, y_pred_svm, save_dir,
         title=(f'{subj} | {name}\n'
-               f'SVM  acc={acc_svm:.3f}  bal={bal_svm:.3f} | {gs_svm.best_params_}'),
+               f'SVM  acc={acc_svm:.3f}  bal={bal_svm:.3f} | {svm_best_params}'),
         fname=f'{subj}_{cond}_{_safe_name(name)}_SVM_cm.png')
- 
+
     # --- RF ---
     print(f"    [RF]  {name} ...")
-    gs_rf, _ = _make_rf_pipeline(inner_n_jobs)
-    gs_rf.fit(X, y)
-    best_rf   = gs_rf.best_estimator_
+    if fixed_mode:
+        rf_pipeline = Pipeline([('rf', RandomForestClassifier(
+            random_state=42,
+            n_estimators=fix_rf_estimators,
+            max_depth=fix_rf_depth,
+            min_samples_split=fix_rf_split,
+            max_features=fix_rf_features))])
+        rf_pipeline.fit(X, y)
+        best_rf        = rf_pipeline
+        rf_best_params = {
+            'rf__n_estimators':      fix_rf_estimators,
+            'rf__max_depth':         fix_rf_depth,
+            'rf__min_samples_split': fix_rf_split,
+            'rf__max_features':      fix_rf_features,
+        }
+    else:
+        gs_rf, _       = _make_rf_pipeline(inner_n_jobs)
+        gs_rf.fit(X, y)
+        best_rf        = gs_rf.best_estimator_
+        rf_best_params = gs_rf.best_params_
+
     y_pred_rf = cross_val_predict(best_rf, X, y, cv=cv, n_jobs=inner_n_jobs)
     acc_rf    = (y_pred_rf == y).mean()
     bal_rf    = balanced_accuracy_score(y, y_pred_rf)
- 
-    result.rf_best_params = gs_rf.best_params_
+
+    result.rf_best_params = rf_best_params
     result.rf_accuracy    = acc_rf
     result.rf_bal_acc     = bal_rf
     result.rf_per_class   = _per_class_recall(y, y_pred_rf)
     result.rf_precision   = _per_class_precision(y, y_pred_rf)
- 
+
     _save_confusion_matrix(
         y, y_pred_rf, save_dir,
         title=(f'{subj} | {name}\n'
-               f'RF   acc={acc_rf:.3f}  bal={bal_rf:.3f} | {gs_rf.best_params_}'),
+               f'RF   acc={acc_rf:.3f}  bal={bal_rf:.3f} | {rf_best_params}'),
         fname=f'{subj}_{cond}_{_safe_name(name)}_RF_cm.png')
- 
+
     result.runtime_s = time.time() - t0
     rf_model = best_rf.named_steps['rf']
     return result, rf_model
@@ -424,8 +469,9 @@ def _save_confusion_matrix(y_true, y_pred, save_dir, title, fname):
  
  
 def plot_feature_importance(rf_model, nICs, nBands, nTime,
-                             ic_labels, time_vector,
-                             save_dir, subj, cond, exp_name):
+                            ic_labels, time_vector,
+                            save_dir, subj, cond, exp_name,
+                            band_idx_vec=None):
     """
     Save band×time heatmap and IC importance bar chart for a fitted RF model.
  
@@ -452,15 +498,16 @@ def plot_feature_importance(rf_model, nICs, nBands, nTime,
     tick_labs     = [f"{int(time_vector[i])}" for i in tick_locs]
  
     fig, ax = plt.subplots(figsize=(14, 4))
+    bandnames = BAND_NAMES[:nBands] if band_idx_vec is None else [BAND_NAMES[i] for i in band_idx_vec]
     sns.heatmap(imp_band_time, cmap='viridis', ax=ax,
-                yticklabels=BAND_NAMES[:nBands],
+                yticklabels=bandnames,
                 xticklabels=False,
                 cbar_kws={'label': 'Feature Importance'})
     ax.set_xticks(tick_locs)
     ax.set_xticklabels(tick_labs, rotation=45, fontsize=8)
     ax.set_xlabel('Time (ms)')
     ax.set_ylabel('Frequency Band')
-    ax.set_title(f'{subj} | {exp_name} — RF Feature Importance: Band × Time')
+    ax.set_title(f'{subj} | {exp_name} — RF Feature Importance: Band x Time')
     plt.tight_layout()
     fpath = os.path.join(save_dir,
         f'{subj}_{cond}_{_safe_name(exp_name)}_RF_importance_band_time.png')

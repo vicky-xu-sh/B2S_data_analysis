@@ -4,7 +4,7 @@
 #SBATCH --time=04:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --output=/scratch/st-ssfels-1/vickywx/logs_classification/%x_%j.out
 #SBATCH --error=/scratch/st-ssfels-1/vickywx/logs_classification/%x_%j.err
@@ -54,7 +54,7 @@ if [ -n "${SPEECH_WINDOW_MS}" ]; then
     SPEECH_WIN_ARG="--speech-window-ms ${SPEECH_WINDOW_MS}"
 fi
 
-# --- Step 1: main classification (W1, W2, W3) ---
+# --- Step 1: main classification (W1a GridSearchCV → fixed params → W1b–e, W2, W3) ---
 echo ""
 echo "--- Step 1: classification_overt.py ---"
 python "${SCRIPT_DIR}/classification_overt.py" \
@@ -71,16 +71,61 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# --- Step 2: W4 pre-speech sweep ---
+# --- Parse recommended fixed params written by Step 1 ---
+FIXED_PARAMS_CSV="${OUTPUT_DIR}/${SUBJ}/spoken/baseline_windows/${SUBJ}_sp_recommended_fixed_params.csv"
+
+if [ ! -f "${FIXED_PARAMS_CSV}" ]; then
+    echo "[ERROR] Recommended fixed params CSV not found: ${FIXED_PARAMS_CSV}"
+    echo "[ERROR] Cannot pass fixed params to W4 sweep — aborting."
+    exit 1
+fi
+
+# Extract each param value robustly (strip carriage returns from any Windows line endings)
+get_csv_value() {
+    local key="$1"
+    awk -F',' -v key="$key" 'NR > 1 && $1 == key { print $2 }' "${FIXED_PARAMS_CSV}" \
+        | tr -d '\r\n'
+}
+
+FIX_SVM_C=$(get_csv_value "fix_svm_C")
+FIX_RF_DEPTH=$(get_csv_value "fix_rf_depth")
+FIX_RF_FEATURES=$(get_csv_value "fix_rf_features")
+FIX_RF_ESTIMATORS=$(get_csv_value "fix_rf_estimators")
+FIX_RF_SPLIT=$(get_csv_value "fix_rf_split")
+
+# Verify all values were extracted (FIX_RF_DEPTH may be the string "None" — that is valid)
+if [ -z "${FIX_SVM_C}" ] || [ -z "${FIX_RF_DEPTH}" ] || \
+   [ -z "${FIX_RF_FEATURES}" ] || [ -z "${FIX_RF_ESTIMATORS}" ] || \
+   [ -z "${FIX_RF_SPLIT}" ]; then
+    echo "[ERROR] Failed to parse all fixed params from CSV: ${FIXED_PARAMS_CSV}"
+    echo "  fix_svm_C='${FIX_SVM_C}'  fix_rf_depth='${FIX_RF_DEPTH}'"
+    echo "  fix_rf_features='${FIX_RF_FEATURES}'  fix_rf_estimators='${FIX_RF_ESTIMATORS}'"
+    echo "  fix_rf_split='${FIX_RF_SPLIT}'"
+    exit 1
+fi
+
+echo ""
+echo "  Fixed params parsed from W1a:"
+echo "    SVM:  C=${FIX_SVM_C}"
+echo "    RF:   max_depth=${FIX_RF_DEPTH}  max_features=${FIX_RF_FEATURES}"
+echo "          n_estimators=${FIX_RF_ESTIMATORS}  min_samples_split=${FIX_RF_SPLIT}"
+
+# --- Step 2: W4 pre-speech sweep (uses fixed params from W1a) ---
 echo ""
 echo "--- Step 2: classification_overt_W4_sweep.py ---"
 python "${SCRIPT_DIR}/classification_overt_W4_sweep.py" \
-    --subj             "${SUBJ}" \
-    --input-dir        "${INPUT_DIR}" \
-    --output-dir       "${OUTPUT_DIR}" \
-    --overt-brain-ics  ${OVERT_BRAIN_ICS} \
-    --overt-bad-epochs ${OVERT_BAD_EPOCHS} \
-    ${SPEECH_WIN_ARG}
+    --subj              "${SUBJ}" \
+    --input-dir         "${INPUT_DIR}" \
+    --output-dir        "${OUTPUT_DIR}" \
+    --overt-keep-ics    ${OVERT_KEEP_ICS} \
+    --overt-bad-epochs  ${OVERT_BAD_EPOCHS} \
+    ${SPEECH_WIN_ARG} \
+    --fix-svm-C         "${FIX_SVM_C}" \
+    --fix-rf-depth      "${FIX_RF_DEPTH}" \
+    --fix-rf-features   "${FIX_RF_FEATURES}" \
+    --fix-rf-estimators "${FIX_RF_ESTIMATORS}" \
+    --fix-rf-split      "${FIX_RF_SPLIT}" \
+    --n-jobs            ${SLURM_CPUS_PER_TASK}
 
 EXIT_CODE=$?
 echo ""

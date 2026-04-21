@@ -45,7 +45,7 @@ def _short_label(exp_name):
  
     Examples
     --------
-    W1a_allIC_zpower_full            → W1a (allIC, zpower)
+    W1a_keepIC_zpower_full            → W1a (keepIC, zpower)
     W2b_brainIC_zpower_speech500ms   → W2b (brainIC, zpower)
     W1e_brainIC_combined_full        → W1e (brainIC, combined)
     W3a_brainIC_zpower_prespeech500ms → W3a (brainIC, zpower)
@@ -58,7 +58,7 @@ def _short_label(exp_name):
     if parts[0] == 'Band' or (len(parts) > 1 and parts[0] in ('BandA', 'BandB')):
         prefix   = parts[0]                          # Band, BandA, BandB
         band     = parts[1]                          # e.g. beta, all, wide
-        ic_part  = 'brainIC' if 'brainIC' in exp_name else 'allIC'
+        ic_part  = 'brainIC' if 'brainIC' in exp_name else 'keepIC'
         return f'{prefix} {band} ({ic_part})'
  
     # W4 final experiments: W4_ExpA_RF_... or W4_ExpB_combined_...
@@ -66,14 +66,14 @@ def _short_label(exp_name):
         return f'W4 {parts[1]} {parts[2]}'
  
     # W4 sweep: W4_brainIC_zpower_pre250ms_...
-    if parts[0] == 'W4' and len(parts) > 2 and parts[1] in ('brainIC', 'allIC'):
+    if parts[0] == 'W4' and len(parts) > 2 and parts[1] in ('brainIC', 'keepIC'):
         pre_part = next((p for p in parts if p.startswith('pre')), '')
         return f'W4 ({pre_part})'
  
     # Standard experiments: W{n}{letter}_{ic}_{feature}_{window}
     exp_id  = parts[0]                               # W1a, W2b, W3a ...
     ic_raw  = parts[1] if len(parts) > 1 else ''
-    ic_str  = 'brainIC' if 'brain' in ic_raw else 'allIC'
+    ic_str  = 'brainIC' if 'brain' in ic_raw else 'keepIC'
     feat    = parts[2] if len(parts) > 2 else ''
     feat_map = {'zpower': 'zpower', 'instfreq': 'instfreq', 'combined': 'combined'}
     feat_str = feat_map.get(feat, feat)
