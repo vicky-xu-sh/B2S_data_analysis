@@ -14,8 +14,9 @@
 # ---------------------------------------------------------------------------
 # Subject and condition — edit here to run a specific subject
 # ---------------------------------------------------------------------------
-export SUBJ="subj-04"
+export SUBJ="subj-01"
 export SPEECH_TYPE="im"      # "sp" = spoken/overt | "im" = imagined/covert
+export LINE_NOISE_NOTCH_FILTER_TWICE="false"  # "true" or "false" - whether to apply the 60 Hz notch filter twice
 
 # ---------------------------------------------------------------------------
 # MATLAB environment setup
@@ -42,7 +43,7 @@ echo "===== Job started: $(date) ====="
 echo "Node: $(hostname)"
 echo "SLURM_SUBMIT_DIR: ${SLURM_SUBMIT_DIR}"
 echo "TMPDIR: ${TMPDIR}"
-echo "Subject: ${SUBJ} | Speech type: ${SPEECH_TYPE}"
+echo "Subject: ${SUBJ} | Speech type: ${SPEECH_TYPE} | Line noise filtering twice: ${LINE_NOISE_NOTCH_FILTER_TWICE}"
 echo "CPUs: ${SLURM_CPUS_PER_TASK}"
 
 matlab -nodisplay -nosplash -nodesktop -r \

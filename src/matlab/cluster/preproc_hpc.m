@@ -23,6 +23,7 @@ OUTPUT_MAT_PATH = '/scratch/st-ssfels-1/vickywx/B2S_data_analysis/data/04_proces
 
 SUBJ        = getenv('SUBJ');
 SPEECH_TYPE = getenv('SPEECH_TYPE');
+LINE_NOISE_NOTCH_FILTER_TWICE = getenv('LINE_NOISE_NOTCH_FILTER_TWICE');
 
 if isempty(SUBJ)
    error('Error: SUBJ environment variable not set.\n');
@@ -149,6 +150,16 @@ else
     pop_spectopo(EEG, 1, [0 EEG.pnts], 'EEG', 'freq', [10 20 80], 'freqrange', [0.1 200], 'electrodes', 'off');
     sgtitle(sprintf('Power spectra after %d Hz HP and line noise removed', HP_CUTOFF));
     save_fig(fig, FIG_DIR, sprintf('power_spectra_after_%dhz_hp_linenoise_removed', HP_CUTOFF));
+
+    if strcmp(LINE_NOISE_NOTCH_FILTER_TWICE, 'true')
+        fprintf('\n--- Applying 60 Hz line noise notch filter a second time ---\n');
+        EEG = pop_eegfiltnew(EEG, 'locutoff',  58, 'hicutoff',  62, 'revfilt', 1);
+
+        fig = figure('Visible', 'off');
+        pop_spectopo(EEG, 1, [0 EEG.pnts], 'EEG', 'freq', [10 20 80], 'freqrange', [0.1 200], 'electrodes', 'off');
+        sgtitle(sprintf('Power spectra after %d Hz HP and two notch filters applied', HP_CUTOFF));
+        save_fig(fig, FIG_DIR, sprintf('power_spectra_after_%dhz_hp_linenoise_removed_twice', HP_CUTOFF));
+    end
 
 
     %% =========================================================================
@@ -293,6 +304,11 @@ else
     EEG = pop_eegfiltnew(EEG_orig, 1, 150);
     EEG = pop_eegfiltnew(EEG, 'locutoff',  58, 'hicutoff',  62, 'revfilt', 1);
     EEG = pop_eegfiltnew(EEG, 'locutoff', 118, 'hicutoff', 122, 'revfilt', 1);
+
+    if strcmp(LINE_NOISE_NOTCH_FILTER_TWICE, 'true')
+        fprintf('\n--- Applying 60 Hz line noise notch filter a second time ---\n');
+        EEG = pop_eegfiltnew(EEG, 'locutoff',  58, 'hicutoff',  62, 'revfilt', 1);
+    end
 
     % Remove the same bad channels as in the HP-filtered dataset
     removed_chans2 = EEG.chanlocs(~EEG_ICA.etc.clean_channel_mask);
