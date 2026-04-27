@@ -18,8 +18,8 @@
 % ==========================================================================
 
 % CHANGE THESE
-SUBJ        = 'subj-05';
-SPEECH_TYPE = 'im';   % 'sp' = spoken/overt | 'im' = imagined/covert
+SUBJ        = 'subj-01';
+SPEECH_TYPE = 'sp';   % 'sp' = spoken/overt | 'im' = imagined/covert
 
 BASE_PATH  = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/data';
 RAW_PATH   = fullfile(BASE_PATH, '01_raw/', SUBJ);
@@ -156,10 +156,13 @@ eeglab redraw;
 %     'E120','E121','E133','E134','E145','E146','E156','E165','E166','E174',...
 %     'E175','E187','E188','E199','E200','E208','E209','E216','E256'});
 % EEG = pop_select(EEG, 'nochannel', {'E219'});
-EEG = pop_select(EEG, 'nochannel', {'E91','E92','E102','E103','E111','E112',...
-    'E120','E121','E122','E133','E134','E145','E146','E156','E165','E166','E174',...
-    'E175','E187','E188','E199'});
+% EEG = pop_select(EEG, 'nochannel', {'E91','E92','E102','E103','E111','E112',...
+%     'E120','E121','E122','E133','E134','E145','E146','E156','E165','E166','E174',...
+%     'E175','E187','E188','E199'});
 % EEG = pop_select(EEG, 'nochannel', {'E217'});
+EEG = pop_select(EEG, 'nochannel', {'E82','E91','E92','E102','E103','E111','E112','E120','E121','E133','E134','E145',...
+    'E146','E156','E165','E166','E174','E175','E187','E188','E199','E200','E208',...
+    'E216','E217','E228','E229','E233','E237','E247','E250','E251','E255','E256'});
 [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG, CURRENTSET+1);
 eeglab redraw;
 
