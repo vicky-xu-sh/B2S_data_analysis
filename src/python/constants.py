@@ -41,7 +41,7 @@ BAND_SETS = {
     'beta':            [2],
     'gamma':           [3],
     'high_gamma':      [4],
-    'mu':              [1, 2],       # alpha + beta
+    'alpha_beta':      [1, 2], 
     'wide_gamma':      [3, 4],       # gamma + high gamma
     'beta_wide_gamma': [2, 3, 4],    # beta + gamma + high gamma
 }

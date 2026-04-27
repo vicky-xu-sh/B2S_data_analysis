@@ -6,9 +6,9 @@ Experiments
 -----------
 W1 — Full post-stimulus window (0 → 1950ms):
   W1a  all-keep ICs | z_power_smooth   | all bands
-  W1b  all-keep ICs | inst_freq_smooth | all bands
+  W1b  all-keep ICs | inst_freq | all bands
   W1c  brain ICs    | z_power_smooth   | all bands
-  W1d  brain ICs    | inst_freq_smooth | all bands
+  W1d  brain ICs    | inst_freq | all bands
 
 W2 — Speech window (onset → onset + N ms, N derived from mean speech duration):
   W2a  all-keep ICs | z_power_smooth  | all bands
@@ -227,7 +227,6 @@ def main():
 
     print(f'[4/4] Smoothing (LP {LP_CUTOFF_HZ} Hz)...')
     z_power_smooth   = lowpass_smooth(z_power)
-    inst_freq_smooth = lowpass_smooth(inst_freq)
 
     # Sample indices for onset/offset
     onset_tps  = np.rint(onset_times  / 1000 * FS + idx_0ms).astype(int)
@@ -252,9 +251,9 @@ def main():
     # Time vectors for feature importance plots
     n_full_tp         = idx_1950ms - idx_0ms
     time_vec_full     = times[idx_0ms:idx_1950ms]
-    time_vec_speech   = np.linspace(0, speech_window_tp / FS * 1000, speech_window_tp)
-    time_vec_prespeech = np.linspace(-W3_PRE_ONSET_MS, 0,
-                                     int(W3_PRE_ONSET_MS / 1000 * FS))
+    time_vec_speech    = np.arange(speech_window_tp) / FS * 1000
+    pre_tp_w3          = int(W3_PRE_ONSET_MS / 1000 * FS)
+    time_vec_prespeech = np.arange(-pre_tp_w3, 0) / FS * 1000
 
     if keep_ics_1idx is None:
         keep_ics_1idx = list(range(1, z_power.shape[0] + 1))
@@ -318,14 +317,14 @@ def main():
     ]).to_csv(fixed_params_path, index=False)
     print(f'  Fixed params saved: {fixed_params_path}\n')
 
-    # W1b: all-keep ICs | inst_freq_smooth
-    X = build_X(inst_freq_smooth, keep_ics_0idx, time_slice=t_full)
+    # W1b: all-keep ICs | inst_freq
+    X = build_X(inst_freq, keep_ics_0idx, time_slice=t_full)
     all_results.append(run_exp(
         'W1b_keepIC_instfreq_full', X, y, save_dir, subj, cond_code,
         ic_set='all_keep', band_set='all_bands',
-        feature='inst_freq_smooth', window='0-1950ms',
+        feature='inst_freq', window='0-1950ms',
         ic_labels=ic_labels_keep, time_vec=time_vec_full,
-        nICs=len(keep_ics_0idx), nBands=inst_freq_smooth.shape[1], nTime=n_full_tp,
+        nICs=len(keep_ics_0idx), nBands=inst_freq.shape[1], nTime=n_full_tp,
         inner_jobs=inner_jobs, **fp))
             
     if run_brain_exps:
@@ -339,14 +338,14 @@ def main():
             nICs=len(brain_ics_0idx), nBands=z_power_smooth.shape[1], nTime=n_full_tp,
             inner_jobs=inner_jobs, **fp))
 
-        # W1d: brain ICs | inst_freq_smooth
-        X = build_X(inst_freq_smooth, brain_ics_0idx, time_slice=t_full)
+        # W1d: brain ICs | inst_freq
+        X = build_X(inst_freq, brain_ics_0idx, time_slice=t_full)
         all_results.append(run_exp(
             'W1d_brainIC_instfreq_full', X, y, save_dir, subj, cond_code,
             ic_set='brain', band_set='all_bands',
             feature='inst_freq_smooth', window='0-1950ms',
             ic_labels=ic_labels_brain, time_vec=time_vec_full,
-            nICs=len(brain_ics_0idx), nBands=inst_freq_smooth.shape[1], nTime=n_full_tp,
+            nICs=len(brain_ics_0idx), nBands=inst_freq.shape[1], nTime=n_full_tp,
             inner_jobs=inner_jobs, **fp))
 
     # -------------------------------------------------------------------
@@ -385,7 +384,7 @@ def main():
     # -------------------------------------------------------------------
     pre_tp = int(W3_PRE_ONSET_MS / 1000 * FS)
     print(f'\n{"="*60}\n  W3 — Pre-speech only '
-          f'(onset−{W3_PRE_ONSET_MS}ms → onset, {pre_tp} samples)\n{"="*60}')
+          f'(onset-{W3_PRE_ONSET_MS}ms → onset, {pre_tp} samples)\n{"="*60}')
 
     # W3a: all-keep ICs
     X = build_X_speech_window(z_power_smooth, keep_ics_0idx, onset_tps,
