@@ -6,9 +6,9 @@
 % ==========================================================================
 
 % CHANGE THESE
-SUBJ        = 'subj-03';
-SPEECH_TYPE = 'im';   % 'sp' = spoken/overt | 'im' = imagined/covert
-HEADMODEL_TYPE = 'bemcp';  %'bemcp' or 'openmeeg'
+SUBJ        = 'subj-01';
+SPEECH_TYPE = 'sp';   % 'sp' = spoken/overt | 'im' = imagined/covert
+HEADMODEL_TYPE = 'template';  %'bemcp' or 'openmeeg' or 'template'
 RV_THRES = 0.15;
 
 % coord_transform = [-2 0 23 -0.142526 -0.00426732 0.117257 10.3 10.3 10.3]; % subj-02
@@ -38,7 +38,10 @@ RV_THRES = 0.15;
 
 
 BASE_PATH     = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/data';
-HEADMODEL_DIR = fullfile(BASE_PATH, '02_interim_local', SUBJ, 'custom_headmodel');
+if ~strcmp(HEADMODEL_TYPE, 'template')
+    HEADMODEL_DIR = fullfile(BASE_PATH, '02_interim_local', SUBJ, 'custom_headmodel');
+end
+
 % set env for openmeeg
 setenv('PATH', [getenv('PATH') ':/Users/vickyxu/Documents/MATLAB/Toolboxes/OpenMEEG-2.4.1-MacOSX/bin/']);
 setenv('OMP_DISPLAY_ENV', 'FALSE');
@@ -97,61 +100,112 @@ fprintf('  → Sampling rate: %.0f Hz\n\n', EEG.srate);
 %  hard-code the resulting coord_transform and chanomit below.
 % ==========================================================================
 
-headmodel_path = fullfile(HEADMODEL_DIR, [SUBJ, '_headmodel_',HEADMODEL_TYPE,'.mat']);
-mri_path       = fullfile(HEADMODEL_DIR, [SUBJ, '_mri_unbiased.mat']);
-chanlocs_path  = fullfile(HEADMODEL_DIR, [SUBJ, '_fid_chanlocs.mat']);
+if strcmp(HEADMODEL_TYPE, 'template')
 
-fprintf('[STEP 2] Loading headmodel files...\n');
+    fprintf('[STEP 2] Loading standard headmodel files abd settings...\n');
 
-% --- Load and verify headmodel ---
-if ~exist(headmodel_path, 'file')
-    error('[ERROR] Headmodel file not found:\n  %s', headmodel_path);
-end
-if strcmp(HEADMODEL_TYPE, 'openmeeg')
-    load(headmodel_path, 'headmodel_openmeeg');
-    headmodel = headmodel_openmeeg;
+    % non-scalp (including ones not on head mesh) channels:
+    % 'E67','E73','E82','E91','E92','E102','E103','E111','E120','E133','E145','E165',
+    % 'E174','E187','E208','E216','E217','E218','E219','E225' to 'E256'
+    
+    target_labels = { ...
+        'E67','E73','E82','E91','E92','E102','E103','E111','E120', ...
+        'E133','E145','E165','E174','E187','E199','E208','E209','E216','E217', ...
+        'E218','E219','E225','E226','E227','E228','E229','E230', ...
+        'E231','E232','E233','E234','E235','E236','E237','E238', ...
+        'E239','E240','E241','E242','E243','E244','E245','E246', ...
+        'E247','E248','E249','E250','E251','E252','E253','E254', ...
+        'E255','E256'};
+    
+    % Existing labels in EEG
+    all_labels = {EEG.chanlocs.labels};
+    
+    % Find indices
+    [found, chan_idx] = ismember(target_labels, all_labels);
+    
+    % Indices of channels that exist
+    chan_idx = chan_idx(found);
+    
+    % Labels that were found
+    found_labels = target_labels(found);
+    
+    % Labels that were missing
+    missing_labels = target_labels(~found);
+    
+    fprintf('Found %d channels in the target chanomit set.\n', numel(chan_idx));
+
+    if ~isempty(missing_labels)
+        fprintf(['Channels not found (should already be removed in previous ' ...
+                 'preprocessing steps): %s\n'], ...
+                 strjoin(missing_labels, ', '));
+    end
+
+
+    EEG = pop_dipfit_settings( EEG, ...
+    'hdmfile','standard_vol.mat', ...
+    'mrifile','standard_mri.mat', ...
+    'chanfile','standard_1005.elc', ...
+    'coordformat','MNI', ...
+    'coord_transform',[-0.13015 -20.1331 0 0.12132 0.00027375 -1.5707 10.2 10.8 10.8],...
+    'chanomit', chan_idx);
+
 else
-    load(headmodel_path, 'headmodel_bemcp');
-    headmodel = headmodel_bemcp;
+    % custom headmodel
+    headmodel_path = fullfile(HEADMODEL_DIR, [SUBJ, '_headmodel_',HEADMODEL_TYPE,'.mat']);
+    mri_path       = fullfile(HEADMODEL_DIR, [SUBJ, '_mri_unbiased.mat']);
+    chanlocs_path  = fullfile(HEADMODEL_DIR, [SUBJ, '_fid_chanlocs.mat']);
+    
+    fprintf('[STEP 2] Loading headmodel files...\n');
+    
+    % --- Load and verify headmodel ---
+    if ~exist(headmodel_path, 'file')
+        error('[ERROR] Headmodel file not found:\n  %s', headmodel_path);
+    end
+    if strcmp(HEADMODEL_TYPE, 'openmeeg')
+        load(headmodel_path, 'headmodel_openmeeg');
+        headmodel = headmodel_openmeeg;
+    else
+        load(headmodel_path, 'headmodel_bemcp');
+        headmodel = headmodel_bemcp;
+    end
+    fprintf('  → Headmodel:  %s\n', headmodel_path);
+    
+    % --- Load and verify MRI ---
+    if ~exist(mri_path, 'file')
+        error('[ERROR] MRI file not found:\n  %s', mri_path);
+    end
+    load(mri_path, 'mri_unbiased');
+    fprintf('  → MRI:        %s\n', mri_path);
+    
+    % --- Load and verify channel locations ---
+    if ~exist(chanlocs_path, 'file')
+        error('[ERROR] Channel locations file not found:\n  %s', chanlocs_path);
+    end
+    load(chanlocs_path, 'chanlocs');
+    fprintf('  → Chanlocs:   %s\n\n', chanlocs_path);
+    
+    % Attach headmodel info to EEG struct (keeps everything in subject-specific space)
+    EEG.dipfit.hdmfile    = headmodel;
+    EEG.dipfit.mrifile    = mri_unbiased;
+    EEG.dipfit.chanfile   = chanlocs;
+    EEG.dipfit.coordformat = 'SCS';
+    
+    % Apply subject-specific electrode-to-headmodel alignment.
+    % To re-derive this interactively, comment out pop_dipfit_settings below
+    % and run:  EEG = pop_dipfit_settings(EEG);
+    % Then copy the coord_transform and chanomit values printed to the command window.
+    
+    % fprintf('[STEP 2b] Applying electrode alignment...\n');
+    % 
+    % EEG = pop_dipfit_settings( EEG, ...
+    %     'coordformat',     'SCS', ...
+    %     'coord_transform',  coord_transform, ...
+    %     'chanomit',         chanomit_idx );
+    % 
+    % fprintf('  → coord_transform: [%s]\n',   num2str(coord_transform));
+    % fprintf('  → Omitting %d channels (non-scalp / bad): [%s]\n\n', ...
+    %     length(chanomit_idx), num2str(chanomit_idx));
 end
-fprintf('  → Headmodel:  %s\n', headmodel_path);
-
-% --- Load and verify MRI ---
-if ~exist(mri_path, 'file')
-    error('[ERROR] MRI file not found:\n  %s', mri_path);
-end
-load(mri_path, 'mri_unbiased');
-fprintf('  → MRI:        %s\n', mri_path);
-
-% --- Load and verify channel locations ---
-if ~exist(chanlocs_path, 'file')
-    error('[ERROR] Channel locations file not found:\n  %s', chanlocs_path);
-end
-load(chanlocs_path, 'chanlocs');
-fprintf('  → Chanlocs:   %s\n\n', chanlocs_path);
-
-% Attach headmodel info to EEG struct (keeps everything in subject-specific space)
-EEG.dipfit.hdmfile    = headmodel;
-EEG.dipfit.mrifile    = mri_unbiased;
-EEG.dipfit.chanfile   = chanlocs;
-EEG.dipfit.coordformat = 'SCS';
-
-% Apply subject-specific electrode-to-headmodel alignment.
-% To re-derive this interactively, comment out pop_dipfit_settings below
-% and run:  EEG = pop_dipfit_settings(EEG);
-% Then copy the coord_transform and chanomit values printed to the command window.
-
-% fprintf('[STEP 2b] Applying electrode alignment...\n');
-% 
-% EEG = pop_dipfit_settings( EEG, ...
-%     'coordformat',     'SCS', ...
-%     'coord_transform',  coord_transform, ...
-%     'chanomit',         chanomit_idx );
-% 
-% fprintf('  → coord_transform: [%s]\n',   num2str(coord_transform));
-% fprintf('  → Omitting %d channels (non-scalp / bad): [%s]\n\n', ...
-%     length(chanomit_idx), num2str(chanomit_idx));
-
 %% =========================================================================
 %  Run DIPFIT autofit
 %  pop_multifit fits a single dipole per IC in one pass (no coarse/fine
@@ -176,15 +230,32 @@ fprintf('  → RV ≤ %.2f (good fit): %d / %d components — ICs: [%s]\n', ...
 fprintf('  → RV > %.2f (poor fit): %d / %d components — ICs: [%s]\n\n', ...
     RV_THRES, length(poor_ics), num_comps, num2str(poor_ics));
 
-% % Save CTF (subject-specific-space) dipfit result
-% setname  = [SUBJ, '_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_epoched_dipfit_ctf_',HEADMODEL_TYPE,'_headmodel'];
-% filename = [setname, '.set'];
-% [ALLEEG, EEG, CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET, ...
-%     'setname',  setname, ...
-%     'savenew',  fullfile(OUTPUT_DIR, filename), ...
-%     'gui',      'off');
-% eeglab('redraw');
-% fprintf('[SAVE] CTF-space result saved to:\n  %s\n\n', fullfile(OUTPUT_DIR, filename));
+if strcmp(HEADMODEL_TYPE, 'template')
+    
+    fprintf('[STEP 4] Running eeg_compatlas (DK atlas lookup)...\n');
+    EEG.dipfit.coord_transform = [];
+    EEG = eeg_compatlas(EEG);
+    fprintf('  → eeg_compatlas complete.\n\n');
+
+    setname  = [SUBJ, '_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_epoched_dipfit_mni_',HEADMODEL_TYPE,'_headmodel'];
+    filename = [setname, '.set'];
+    [ALLEEG, EEG, CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET, ...
+        'setname',  setname, ...
+        'savenew',  fullfile(OUTPUT_DIR, filename), ...
+        'gui',      'off');
+    eeglab('redraw');
+    fprintf('[SAVE] MNI-space standard template result saved to:\n  %s\n\n', fullfile(OUTPUT_DIR, filename));
+else
+    % % Save CTF (subject-specific-space) dipfit result
+    % setname  = [SUBJ, '_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_epoched_dipfit_ctf_',HEADMODEL_TYPE,'_headmodel'];
+    % filename = [setname, '.set'];
+    % [ALLEEG, EEG, CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET, ...
+    %     'setname',  setname, ...
+    %     'savenew',  fullfile(OUTPUT_DIR, filename), ...
+    %     'gui',      'off');
+    % eeglab('redraw');
+    % fprintf('[SAVE] CTF-space result saved to:\n  %s\n\n', fullfile(OUTPUT_DIR, filename));
+end
 
 %% =========================================================================
 %  Warp dipole positions to MNI space
@@ -193,78 +264,83 @@ fprintf('  → RV > %.2f (poor fit): %d / %d components — ICs: [%s]\n\n', ...
 %    Step B — non-linear (SPM-style sn) warp  →  MNI space
 % ==========================================================================
 
-norm_mri_path = fullfile(HEADMODEL_DIR, [SUBJ, '_mri_normalised.mat']);
-
-if ~exist(norm_mri_path, 'file')
-    error('[ERROR] Normalised MRI file not found:\n  %s', norm_mri_path);
-end
-load(norm_mri_path, 'mri_normalised');
-fprintf('[STEP 4] Warping dipoles to MNI space...\n');
-fprintf('  → Normalised MRI: %s\n', norm_mri_path);
-
-% Copy EEG struct so we keep the original CTF-space dipfit intact
-EEG2       = EEG;
-model_mni  = EEG.dipfit.model;
-
-for i = 1:length(model_mni)
-    if ~isempty(model_mni(i).posxyz)
-
-        pos_ctf = model_mni(i).posxyz;
-
-        % Flag suspicious input before doing anything
-        if any(isnan(pos_ctf)) || all(pos_ctf == 0)
-            fprintf('  [WARNING] IC %02d — suspicious CTF posxyz before warp: [%.2f %.2f %.2f]  rv=%.3f\n', ...
-                i, pos_ctf(1), pos_ctf(2), pos_ctf(3), model_mni(i).rv);
-        end
-
-        % Step A: rigid-body alignment (subject → pre-aligned space)
-        pos_prealigned = ft_warp_apply(mri_normalised.initial, pos_ctf, 'homogeneous');
-
-        if any(isnan(pos_prealigned))
-            fprintf('  [WARNING] IC %02d — NaN after Step A (rigid-body).  CTF in: [%.2f %.2f %.2f]\n', ...
-                i, pos_ctf(1), pos_ctf(2), pos_ctf(3));
-        end
-
-        % Step B: non-linear SPM warp (pre-aligned → MNI)
-        pos_mni = ft_warp_apply(mri_normalised.params, pos_prealigned, 'individual2sn');
-
-        if any(isnan(pos_mni))
-            fprintf('  [WARNING] IC %02d — NaN after Step B (non-linear warp).  Pre-aligned: [%.2f %.2f %.2f]\n', ...
-                i, pos_prealigned(1), pos_prealigned(2), pos_prealigned(3));
-        end
-
-        model_mni(i).posxyz = pos_mni;
-    else
-        fprintf('  [WARNING] IC %02d — posxyz is empty, skipping warp.\n', i);
+if ~strcmp(HEADMODEL_TYPE, 'template')
+    norm_mri_path = fullfile(HEADMODEL_DIR, [SUBJ, '_mri_normalised.mat']);
+    
+    if ~exist(norm_mri_path, 'file')
+        error('[ERROR] Normalised MRI file not found:\n  %s', norm_mri_path);
     end
+    load(norm_mri_path, 'mri_normalised');
+    fprintf('[STEP 4] Warping dipoles to MNI space...\n');
+    fprintf('  → Normalised MRI: %s\n', norm_mri_path);
+    
+    % Copy EEG struct so we keep the original CTF-space dipfit intact
+    EEG2       = EEG;
+    model_mni  = EEG.dipfit.model;
+    
+    for i = 1:length(model_mni)
+        if ~isempty(model_mni(i).posxyz)
+    
+            pos_ctf = model_mni(i).posxyz;
+    
+            % Flag suspicious input before doing anything
+            if any(isnan(pos_ctf)) || all(pos_ctf == 0)
+                fprintf('  [WARNING] IC %02d — suspicious CTF posxyz before warp: [%.2f %.2f %.2f]  rv=%.3f\n', ...
+                    i, pos_ctf(1), pos_ctf(2), pos_ctf(3), model_mni(i).rv);
+            end
+    
+            % Step A: rigid-body alignment (subject → pre-aligned space)
+            pos_prealigned = ft_warp_apply(mri_normalised.initial, pos_ctf, 'homogeneous');
+    
+            if any(isnan(pos_prealigned))
+                fprintf('  [WARNING] IC %02d — NaN after Step A (rigid-body).  CTF in: [%.2f %.2f %.2f]\n', ...
+                    i, pos_ctf(1), pos_ctf(2), pos_ctf(3));
+            end
+    
+            % Step B: non-linear SPM warp (pre-aligned → MNI)
+            pos_mni = ft_warp_apply(mri_normalised.params, pos_prealigned, 'individual2sn');
+    
+            if any(isnan(pos_mni))
+                fprintf('  [WARNING] IC %02d — NaN after Step B (non-linear warp).  Pre-aligned: [%.2f %.2f %.2f]\n', ...
+                    i, pos_prealigned(1), pos_prealigned(2), pos_prealigned(3));
+            end
+    
+            model_mni(i).posxyz = pos_mni;
+        else
+            fprintf('  [WARNING] IC %02d — posxyz is empty, skipping warp.\n', i);
+        end
+    end
+    
+    fprintf('  → MNI warp complete for %d components.\n\n', length(model_mni));
+    
+    % Update EEG2 to reflect MNI space — clear CTF-specific fields to avoid confusion
+    EEG2.dipfit.model         = model_mni;
+    EEG2.dipfit.coordformat   = 'MNI';
+    EEG2.dipfit.coord_transform = [];   % must be empty so eeg_compatlas uses raw MNI coords
+    EEG2.dipfit.mrifile       = mri_normalised;
+    EEG2.dipfit.hdmfile       = [];     % headmodel is in CTF space — not valid for MNI plotting
+    
+    fprintf('[STEP 4b] Running eeg_compatlas (DK atlas lookup)...\n');
+    EEG2 = eeg_compatlas(EEG2);
+    fprintf('  → eeg_compatlas complete.\n\n');
+
+
+
+    %% =========================================================================
+    %  Save MNI-space result
+    % ==========================================================================
+    
+    setname  = [SUBJ, '_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_epoched_dipfit_ctf_', HEADMODEL_TYPE,'_headmodel_warptoMNI'];
+    filename = [setname, '.set'];
+    
+    [ALLEEG, EEG, CURRENTSET] = pop_newset(ALLEEG, EEG2, CURRENTSET, ...
+        'setname',  setname, ...
+        'savenew',  fullfile(OUTPUT_DIR, filename), ...
+        'gui',      'off');
+    eeglab('redraw');
+    fprintf('[SAVE] MNI-space result saved to:\n  %s\n\n', fullfile(OUTPUT_DIR, filename));
+
 end
-
-fprintf('  → MNI warp complete for %d components.\n\n', length(model_mni));
-
-% Update EEG2 to reflect MNI space — clear CTF-specific fields to avoid confusion
-EEG2.dipfit.model         = model_mni;
-EEG2.dipfit.coordformat   = 'MNI';
-EEG2.dipfit.coord_transform = [];   % must be empty so eeg_compatlas uses raw MNI coords
-EEG2.dipfit.mrifile       = mri_normalised;
-EEG2.dipfit.hdmfile       = [];     % headmodel is in CTF space — not valid for MNI plotting
-
-fprintf('[STEP 4b] Running eeg_compatlas (DK atlas lookup)...\n');
-EEG2 = eeg_compatlas(EEG2);
-fprintf('  → eeg_compatlas complete.\n\n');
-
-%% =========================================================================
-%  Save MNI-space result
-% ==========================================================================
-
-setname  = [SUBJ, '_pilot_', SPEECH_TYPE, '_cleaned_2ndICA_epoched_dipfit_ctf_', HEADMODEL_TYPE,'_headmodel_warptoMNI'];
-filename = [setname, '.set'];
-
-[ALLEEG, EEG, CURRENTSET] = pop_newset(ALLEEG, EEG2, CURRENTSET, ...
-    'setname',  setname, ...
-    'savenew',  fullfile(OUTPUT_DIR, filename), ...
-    'gui',      'off');
-eeglab('redraw');
-fprintf('[SAVE] MNI-space result saved to:\n  %s\n\n', fullfile(OUTPUT_DIR, filename));
 
 %% =========================================================================
 %  Load AAL atlas 
@@ -280,32 +356,45 @@ atlas = ft_read_atlas(aal_path);
 fprintf('  → AAL atlas loaded (FieldTrip v%s)\n\n', ftver);
 
 %% =========================================================================
-%  Summary table: well-fitted dipoles with MNI coords and AAL labels
+%  Summary table: well-fitted dipoles with MNI coords, DK, and AAL labels
 % ==========================================================================
 
 fprintf('\n========================================================\n');
 fprintf('  DIPOLE SUMMARY — %s  |  %s\n', SUBJ, SPEECH_TYPE);
 fprintf('  RV threshold: %.2f\n', RV_THRES);
 fprintf('========================================================\n');
-fprintf('%-6s  %-6s  %7s %7s %7s   %s\n', 'IC', 'RV', 'X(MNI)', 'Y(MNI)', 'Z(MNI)', 'AAL Region');
-fprintf('%s\n', repmat('-', 1, 65));
+fprintf('%-6s  %-6s  %7s %7s %7s   %-25s   %s\n', ...
+    'IC', 'RV', 'X(MNI)', 'Y(MNI)', 'Z(MNI)', 'DK Region', 'AAL Region');
+fprintf('%s\n', repmat('-', 1, 100));
+
+if strcmp(HEADMODEL_TYPE, 'template')
+    EEG2 = EEG;
+end
 
 for i = 1:length(EEG2.dipfit.model)
     rv = EEG2.dipfit.model(i).rv;
 
     mni_coord = EEG2.dipfit.model(i).posxyz;
-    if rv > RV_THRES,                  continue; end   % poor fit
-    if any(isnan(mni_coord)),          continue; end   % NaN from warp
-    if all(mni_coord == 0),            continue; end   % failed fit
+    if rv > RV_THRES,         continue; end
+    if any(isnan(mni_coord)), continue; end
+    if all(mni_coord == 0),   continue; end
 
-    % Suppress ft_volumelookup console chatter
+    % DK label
+    dk_region = EEG2.dipfit.model(i).areadk;
+    if isempty(dk_region)
+        dk_region = 'Unknown';
+    end
+
+    % AAL label
     evalc('region = lookup_aal_region(mni_coord, atlas);');
 
-    fprintf('%-6d  %.3f  %7.1f %7.1f %7.1f   %s\n', ...
-        i, rv, mni_coord(1), mni_coord(2), mni_coord(3), region);
+    fprintf('%-6d  %.3f  %7.1f %7.1f %7.1f   %-25s   %s\n', ...
+        i, rv, ...
+        mni_coord(1), mni_coord(2), mni_coord(3), ...
+        dk_region, region);
 end
 
-fprintf('%s\n', repmat('-', 1, 65));
+fprintf('%s\n', repmat('-', 1, 100));
 fprintf('========================================================\n\n');
 
 fprintf('[DONE] source_analysis_dipfit.m completed successfully.\n');
