@@ -16,12 +16,16 @@
 # CONFIGURE: edit subjects to run
 # ---------------------------------------------------------------------------
 SUBJECTS=(
+    "subj-01"
     "subj-02"
     "subj-03"
     "subj-04"
     "subj-05"
     "subj-06"
     "subj-07"
+    "subj-08"
+    "subj-11"
+    "subj-12"
 )
  
 N_SUBJ=${#SUBJECTS[@]}

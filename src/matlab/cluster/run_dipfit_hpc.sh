@@ -14,9 +14,9 @@
 # ---------------------------------------------------------------------------
 # Subject and condition — edit here to run a specific subject
 # ---------------------------------------------------------------------------
-export SUBJ="subj-04"
+export SUBJ="subj-12"
 export SPEECH_TYPE="im"          # "sp" = spoken/overt | "im" = imagined/covert
-export HEADMODEL_TYPE="bemcp"    # "bemcp" or "openmeeg"
+export HEADMODEL_TYPE="template"    # "bemcp" or "openmeeg" or "template"
 export RV_THRES="0.15"
 
 # ---------------------------------------------------------------------------
