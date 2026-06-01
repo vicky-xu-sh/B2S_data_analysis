@@ -134,6 +134,9 @@ CURRENTSET = 0;
 % Build subject-specific paths
 HEADMODEL_DIR = fullfile(HEADMODEL_DIR_ROOT, SUBJ, 'custom_headmodel');
 
+% Default EGI channel location file (for template headmodel config)
+TEMPLATE_ELEC_CHANLOC_FILE = '/scratch/st-ssfels-1/vickywx/B2S_data_analysis/default_template_chanlocs.ced';
+
 if strcmp(SPEECH_TYPE, 'sp')
     INPUT_DIR  = fullfile(INPUT_DIR_ROOT,  SUBJ, 'spoken',   'datasets');
     OUTPUT_DIR = fullfile(OUTPUT_DIR_ROOT, SUBJ, 'spoken');
@@ -175,6 +178,11 @@ fprintf('  → ICA components: %d\n', size(EEG.icaweights, 1));
 fprintf('  → Trials:         %d\n', EEG.trials);
 fprintf('  → Epoch length:   %.0f samples  (%.3f s)\n', EEG.pnts, EEG.pnts / EEG.srate);
 fprintf('  → Sampling rate:  %.0f Hz\n\n', EEG.srate);
+
+if strcmp(HEADMODEL_TYPE, 'template')
+    fprintf('Lookup standard EGI ELECTRODE locations...\n');
+    EEG = pop_chanedit(EEG, 'lookup', TEMPLATE_ELEC_CHANLOC_FILE);
+end 
 
 %% =========================================================================
 %  STEP 2 — DIPFIT setup
