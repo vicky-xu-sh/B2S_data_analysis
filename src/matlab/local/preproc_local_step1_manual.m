@@ -18,7 +18,7 @@
 % ==========================================================================
 
 % CHANGE THESE
-SUBJ        = 'subj-01';
+SUBJ        = 'subj-12';
 SPEECH_TYPE = 'sp';   % 'sp' = spoken/overt | 'im' = imagined/covert
 
 BASE_PATH  = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/data';
@@ -96,51 +96,120 @@ end
 
 
 %% =========================================================================
+%  VALIDATE: Voice onsets must not precede their stimulus marker
+% ==========================================================================
+if strcmp(SPEECH_TYPE, 'sp')
+
+    % --- Define stimulus event types and short labels -------------------
+    stim_types = {
+        'EVNT_STIM_    _giSP_[]_ECI TCP-IP 55513', 'gi';
+        'EVNT_STIM_    _guSP_[]_ECI TCP-IP 55513', 'gu';
+        'EVNT_STIM_    _miSP_[]_ECI TCP-IP 55513', 'mi';
+        'EVNT_STIM_    _muSP_[]_ECI TCP-IP 55513', 'mu';
+        'EVNT_STIM_    _siSP_[]_ECI TCP-IP 55513', 'si';
+        'EVNT_STIM_    _suSP_[]_ECI TCP-IP 55513', 'su';
+    };
+
+    % --- Collect all event latencies and types --------------------------
+    all_types    = {EEG.event.type};
+    all_latencies = [EEG.event.latency];          % in samples
+    srate        = EEG.srate;
+
+    % --- Identify indices of stimulus and onset events ------------------
+    stim_label_map = containers.Map(stim_types(:,1), stim_types(:,2));
+    is_stim   = cellfun(@(t) isKey(stim_label_map, t), all_types);
+    is_onset  = strcmp(all_types, 'onset');  
+
+    stim_idx  = find(is_stim);
+    onset_idx = find(is_onset);
+
+    if isempty(stim_idx)
+        warning('No stimulus events found — check event type strings.');
+    end
+    if isempty(onset_idx)
+        warning('No voice onset events found — check onset event type label.');
+    end
+
+    % --- Validate onset/stimulus pairing by index position --------------
+    n_pairs      = min(numel(stim_idx), numel(onset_idx));
+    n_violations = 0;
+
+    if numel(stim_idx) ~= numel(onset_idx)
+        warning('Stimulus count (%d) and onset count (%d) do not match — checking first %d pairs.', ...
+                numel(stim_idx), numel(onset_idx), n_pairs);
+    end
+
+    for k = 1:n_pairs
+        if stim_idx(k) > onset_idx(k)   % onset appears before its stimulus in event list
+            n_violations = n_violations + 1;
+            onset_ms = (all_latencies(onset_idx(k)) - 1) / srate * 1000;
+            stim_ms  = (all_latencies(stim_idx(k))  - 1) / srate * 1000;
+            diff_ms  = onset_ms - stim_ms;   % will be negative
+            fprintf(['[VIOLATION] Pair #%d: onset precedes its stimulus!\n' ...
+                     '  Stimulus : %s\n' ...
+                     '  Stim  time: %10.2f ms\n' ...
+                     '  Onset time: %10.2f ms\n' ...
+                     '  Difference: %10.2f ms  (onset - stim)\n\n'], ...
+                     k, stim_label_map(all_types{stim_idx(k)}), ...
+                     stim_ms, onset_ms, diff_ms);
+        end
+    end
+
+    if n_violations == 0
+        fprintf('[OK] All %d onset/stimulus pairs are correctly ordered.\n', n_pairs);
+    else
+        fprintf('[SUMMARY] %d / %d pairs violated the onset > stimulus constraint.\n', ...
+                n_violations, n_pairs);
+    end
+
+end
+
+%% =========================================================================
 %  IMPORT CHANNEL LOCATIONS
 % ==========================================================================
 
-sfp_filename_pattern = fullfile(RAW_PATH, '*.sfp');
-
-sfp_file_matches = dir(sfp_filename_pattern);
-if ~isempty(sfp_file_matches)
-    [~, sfp_filename, ~] = fileparts(sfp_file_matches(1).name);
-    sfp_file = fullfile(RAW_PATH, [sfp_filename, '.sfp']);
-else
-    error('Channel location .sfp file not found.')
-end
-
-fprintf('Importing %s channel location .sfp file: %s\n', SUBJ, sfp_file);
-EEG = pop_chanedit(EEG, 'load', {sfp_file, 'filetype', 'sfp'});
-
-% Label fiducials
-EEG = pop_chanedit(EEG, ...
-    'changefield', {258, 'labels', 'Nz'}, ...
-    'changefield', {259, 'labels', 'LPA'}, ...
-    'changefield', {260, 'labels', 'RPA'});
-
-% Align electrode locations in 3D space — three sequential steps:
-%   1. Translate:  pop_chancenter moves the origin to the best-fit head centre
-%   2. Tilt fix:   rotate so Cz sits exactly on the +Z axis  (X=0, Y=0 from above)
-%   3. Spin fix:   rotate around Z so Nz sits on the +X axis (Y=0, nose forward)
-%   4. Translate:  pop_chancenter again after corrections
-
-EEG = pop_chanedit(EEG, 'eval', 'chans = pop_chancenter(chans, [], []);');
-EEG = align_chanlocs(EEG);
-EEG = pop_chanedit(EEG, 'eval', 'chans = pop_chancenter(chans, [], []);');
- 
-% Visualize — before vs after
-figure;
-subplot(1,2,1);
-topoplot([], EEG.chanlocs, 'style', 'blank', 'electrodes', 'labelpoint', 'chaninfo', EEG.chaninfo);
-title('Channel locations (aligned)');
-subplot(1,2,2);
-chan_xyz = [[EEG.chanlocs.X]; [EEG.chanlocs.Y]; [EEG.chanlocs.Z]];
-scatter3(chan_xyz(1,:), chan_xyz(2,:), chan_xyz(3,:), 20, 'b', 'filled');
-axis equal; grid on; xlabel('X'); ylabel('Y'); zlabel('Z');
-title('3D electrode positions (check Cz top, Nz front)');
-
-[ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG, CURRENTSET);
-eeglab redraw;
+% sfp_filename_pattern = fullfile(RAW_PATH, '*.sfp');
+% 
+% sfp_file_matches = dir(sfp_filename_pattern);
+% if ~isempty(sfp_file_matches)
+%     [~, sfp_filename, ~] = fileparts(sfp_file_matches(1).name);
+%     sfp_file = fullfile(RAW_PATH, [sfp_filename, '.sfp']);
+% else
+%     error('Channel location .sfp file not found.')
+% end
+% 
+% fprintf('Importing %s channel location .sfp file: %s\n', SUBJ, sfp_file);
+% EEG = pop_chanedit(EEG, 'load', {sfp_file, 'filetype', 'sfp'});
+% 
+% % Label fiducials
+% EEG = pop_chanedit(EEG, ...
+%     'changefield', {258, 'labels', 'Nz'}, ...
+%     'changefield', {259, 'labels', 'LPA'}, ...
+%     'changefield', {260, 'labels', 'RPA'});
+% 
+% % Align electrode locations in 3D space — three sequential steps:
+% %   1. Translate:  pop_chancenter moves the origin to the best-fit head centre
+% %   2. Tilt fix:   rotate so Cz sits exactly on the +Z axis  (X=0, Y=0 from above)
+% %   3. Spin fix:   rotate around Z so Nz sits on the +X axis (Y=0, nose forward)
+% %   4. Translate:  pop_chancenter again after corrections
+% 
+% EEG = pop_chanedit(EEG, 'eval', 'chans = pop_chancenter(chans, [], []);');
+% EEG = align_chanlocs(EEG);
+% EEG = pop_chanedit(EEG, 'eval', 'chans = pop_chancenter(chans, [], []);');
+% 
+% % Visualize — before vs after
+% figure;
+% subplot(1,2,1);
+% topoplot([], EEG.chanlocs, 'style', 'blank', 'electrodes', 'labelpoint', 'chaninfo', EEG.chaninfo);
+% title('Channel locations (aligned)');
+% subplot(1,2,2);
+% chan_xyz = [[EEG.chanlocs.X]; [EEG.chanlocs.Y]; [EEG.chanlocs.Z]];
+% scatter3(chan_xyz(1,:), chan_xyz(2,:), chan_xyz(3,:), 20, 'b', 'filled');
+% axis equal; grid on; xlabel('X'); ylabel('Y'); zlabel('Z');
+% title('3D electrode positions (check Cz top, Nz front)');
+% 
+% [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG, CURRENTSET);
+% eeglab redraw;
 
 
 %% =========================================================================
@@ -160,9 +229,24 @@ eeglab redraw;
 %     'E120','E121','E122','E133','E134','E145','E146','E156','E165','E166','E174',...
 %     'E175','E187','E188','E199'});
 % EEG = pop_select(EEG, 'nochannel', {'E217'});
-EEG = pop_select(EEG, 'nochannel', {'E82','E91','E92','E102','E103','E111','E112','E120','E121','E133','E134','E145',...
-    'E146','E156','E165','E166','E174','E175','E187','E188','E199','E200','E208',...
-    'E216','E217','E228','E229','E233','E237','E247','E250','E251','E255','E256'});
+% EEG = pop_select(EEG, 'nochannel', {'E230'});
+% EEG = pop_select(EEG, 'nochannel', {'E85'});
+
+% EEG = pop_select(EEG, 'nochannel', {'E83','E238'});
+
+% subj-08 bad?
+% EEG = pop_select(EEG, 'nochannel', {'E82','E91','E92','E102','E103','E111','E112','E120','E121','E133','E134','E145',...
+%     'E146','E156','E165','E166','E174','E175','E187','E188','E199','E200','E208',...
+%     'E216','E217','E228','E229','E233','E237','E247','E250','E251','E255','E256'});
+
+% general chanloc template
+% last row
+EEG = pop_select(EEG, 'nochannel', {'E91','E102','E111','E120','E133','E145','E165',...
+    'E174','E187','E199','E208','E216','E219'});
+% 2nd last row
+% EEG = pop_select(EEG, 'nochannel', {'E92','E103','E112','E121','E134','E146','E156',...
+%     'E166','E175','E188','E200','E209','E217'});
+
 [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG, CURRENTSET+1);
 eeglab redraw;
 

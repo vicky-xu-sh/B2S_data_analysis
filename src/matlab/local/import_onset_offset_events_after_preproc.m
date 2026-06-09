@@ -1,30 +1,23 @@
 eeglab; % launch EEGLAB
-dataset_path = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/EEG/datasets';
 
-%% Load dataset
-
-EEG = pop_loadset('filename', 'pilot_sp_raw.set', 'filepath', dataset_path);
-% updates data structure
-[ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
-eeglab redraw; % refresh GUI
-
-
-%% Import voice onset/offset events
-% Import events
-speech_events_path = '../../overt_audio_processing/speech_events.txt';
-EEG = pop_importevent(EEG, 'event', speech_events_path, 'fields', {'latency' 'type'}, 'timeunit', 1);
+%% Load dataset from step 1 preprocessed EEG 
 
 % Check events
 pop_eegplot(EEG, 1, 1, 1);
 
-
-% Align with the cleaned EEG dataset
+% Align with the cleaned EEG dataset (resample + trim)
 EEG = pop_resample( EEG, 500);
-EEG = eeg_eegrej( EEG, [11 277;26672 27449;75704 76504;83332 84133;119318 120017;134020 134706;139461 139999;156043 156609;163150 163665;181993 182452;190899 191468;234690 235274]);
+
+trim_samples = floor(1 * EEG.srate);
+start_trim   = 1;
+end_trim     = EEG.pnts - trim_samples;
+EEG = eeg_eegrej(EEG, [start_trim, trim_samples; end_trim, EEG.pnts]);
+fprintf('Trimmed samples 1-%d (start) and %d-%d (end)\n', trim_samples, end_trim, EEG.pnts);
+
 %% 
 
 % Set output filename
-filename = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/overt_audio_processing/subj-02_sess-01/speech_onset_offset_events_clean_EEG_aligned.txt';
+filename = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/subj-12_speech_onset_offset_events_cleaned_EEG_aligned.txt';
 fid = fopen(filename, 'w');
 
 % Loop through EEG events

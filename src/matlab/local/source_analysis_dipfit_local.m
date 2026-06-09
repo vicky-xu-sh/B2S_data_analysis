@@ -38,8 +38,11 @@ RV_THRES = 0.15;
 
 
 BASE_PATH     = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/data';
+
 if ~strcmp(HEADMODEL_TYPE, 'template')
     HEADMODEL_DIR = fullfile(BASE_PATH, '02_interim_local', SUBJ, 'custom_headmodel');
+else
+    TEMPLATE_ELEC_CHANLOC_FILE = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/data/default_template_chanlocs.ced';
 end
 
 % set env for openmeeg
@@ -92,6 +95,11 @@ fprintf('  → ICA components: %d\n', size(EEG.icaweights, 1));
 fprintf('  → Trials:        %d\n',  EEG.trials);
 fprintf('  → Epoch length:  %.0f samples  (%.3f s)\n', EEG.pnts, EEG.pnts / EEG.srate);
 fprintf('  → Sampling rate: %.0f Hz\n\n', EEG.srate);
+
+if strcmp(HEADMODEL_TYPE, 'template')
+    fprintf('Lookup standard EGI ELECTRODE locations...\n');
+    EEG = pop_chanedit(EEG, 'lookup', TEMPLATE_ELEC_CHANLOC_FILE);
+end    
 
 %% =========================================================================
 %  DIPFIT setup
