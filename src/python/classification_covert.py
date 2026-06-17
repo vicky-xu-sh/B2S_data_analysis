@@ -249,6 +249,155 @@ def build_class_templates_consonant(z_power, y, onset_tps,
     return templates, consonant_pre_tps
 
 
+def build_general_template(z_power, onset_tps, ic_0idx, band_idx,
+                            pre_tp, post_tp, trial_mask=None):
+    """
+    Build a single template from ALL overt trials (mean across all classes).
+
+    Parameters / Returns mirror build_class_templates but returns one template
+    instead of a per-class dict.
+
+    Returns
+    -------
+    template : np.ndarray [nICs x nBands x win_len]
+    win_len  : int
+    """
+    nICs    = len(ic_0idx)
+    nBands  = len(band_idx)
+    win_len = pre_tp + post_tp
+    total_T = z_power.shape[2]
+
+    if trial_mask is None:
+        trial_mask = np.ones(z_power.shape[-1], dtype=bool)
+
+    accum = []
+    for i in np.where(trial_mask)[0]:
+        start = int(onset_tps[i]) - pre_tp
+        end   = int(onset_tps[i]) + post_tp
+        if start < 0 or end > total_T:
+            continue
+        win = z_power[np.ix_(ic_0idx, band_idx,
+                              list(range(start, end)), [i])][:, :, :, 0]
+        accum.append(win)
+
+    template = (np.mean(accum, axis=0) if len(accum) > 0
+                else np.zeros((nICs, nBands, win_len)))
+    return template, win_len
+
+
+def build_consonant_group_templates(z_power, y, onset_tps, ic_0idx, band_idx,
+                                     pre_tp, post_tp, trial_mask=None):
+    """
+    Build one template per consonant group (stop / nasal / fricative) for W2/W3/W4u.
+
+    Each group template is the mean z_power of all trials belonging to the two
+    classes in that group.
+
+    Returns
+    -------
+    group_templates : dict {group_name: np.ndarray [nICs x nBands x win_len]}
+    win_len         : int
+    """
+    nICs    = len(ic_0idx)
+    nBands  = len(band_idx)
+    win_len = pre_tp + post_tp
+    total_T = z_power.shape[2]
+
+    if trial_mask is None:
+        trial_mask = np.ones(z_power.shape[-1], dtype=bool)
+
+    group_templates = {}
+    for group_name, cls_labels in CONSONANT_GROUPS.items():
+        group_mask = trial_mask & np.isin(y, list(cls_labels))
+        accum = []
+        for i in np.where(group_mask)[0]:
+            start = int(onset_tps[i]) - pre_tp
+            end   = int(onset_tps[i]) + post_tp
+            if start < 0 or end > total_T:
+                continue
+            win = z_power[np.ix_(ic_0idx, band_idx,
+                                  list(range(start, end)), [i])][:, :, :, 0]
+            accum.append(win)
+        group_templates[group_name] = (np.mean(accum, axis=0) if len(accum) > 0
+                                       else np.zeros((nICs, nBands, win_len)))
+    return group_templates, win_len
+
+
+def build_general_template_consonant(z_power, onset_tps, ic_0idx, band_idx,
+                                      consonant_pre_tps, post_tp_base,
+                                      trial_mask=None):
+    """
+    Build group-window-sized general templates (ALL trials) for W4c onset estimation.
+
+    Each group has its own pre_tp, so one template is built per group using ALL
+    overt trials with that group's window parameters.
+
+    Returns
+    -------
+    gen_templates : dict {group_name: np.ndarray [nICs x nBands x group_win_len]}
+    """
+    total_T = z_power.shape[2]
+    nICs    = len(ic_0idx)
+    nBands  = len(band_idx)
+
+    if trial_mask is None:
+        trial_mask = np.ones(z_power.shape[-1], dtype=bool)
+
+    gen_templates = {}
+    for group_name, pre_tp in consonant_pre_tps.items():
+        win_len = pre_tp + post_tp_base
+        accum = []
+        for i in np.where(trial_mask)[0]:
+            start = int(onset_tps[i]) - pre_tp
+            end   = int(onset_tps[i]) + post_tp_base
+            if start < 0 or end > total_T:
+                continue
+            win = z_power[np.ix_(ic_0idx, band_idx,
+                                  list(range(start, end)), [i])][:, :, :, 0]
+            accum.append(win)
+        gen_templates[group_name] = (np.mean(accum, axis=0) if len(accum) > 0
+                                     else np.zeros((nICs, nBands, win_len)))
+    return gen_templates
+
+
+def build_consonant_group_templates_consonant(z_power, y, onset_tps, ic_0idx, band_idx,
+                                               consonant_pre_tps, post_tp_base,
+                                               trial_mask=None):
+    """
+    Build per-group templates with group-specific window sizes for W4c.
+
+    Like build_consonant_group_templates but pre_tp varies per group (W4c layout).
+
+    Returns
+    -------
+    group_templates : dict {group_name: np.ndarray [nICs x nBands x group_win_len]}
+    """
+    total_T = z_power.shape[2]
+    nICs    = len(ic_0idx)
+    nBands  = len(band_idx)
+
+    if trial_mask is None:
+        trial_mask = np.ones(z_power.shape[-1], dtype=bool)
+
+    group_templates = {}
+    for group_name, cls_labels in CONSONANT_GROUPS.items():
+        pre_tp  = consonant_pre_tps[group_name]
+        win_len = pre_tp + post_tp_base
+        group_mask = trial_mask & np.isin(y, list(cls_labels))
+        accum = []
+        for i in np.where(group_mask)[0]:
+            start = int(onset_tps[i]) - pre_tp
+            end   = int(onset_tps[i]) + post_tp_base
+            if start < 0 or end > total_T:
+                continue
+            win = z_power[np.ix_(ic_0idx, band_idx,
+                                  list(range(start, end)), [i])][:, :, :, 0]
+            accum.append(win)
+        group_templates[group_name] = (np.mean(accum, axis=0) if len(accum) > 0
+                                       else np.zeros((nICs, nBands, win_len)))
+    return group_templates
+
+
 # ---------------------------------------------------------------------------
 # Sliding Pearson correlation
 # ---------------------------------------------------------------------------
@@ -470,6 +619,145 @@ def estimate_covert_onsets_consonant(z_power_covert, y_covert,
         _, _, peak_s, peak_prominence, n_competing = slide_template(trial_3d, template_flat, win_len,
                                       search_start, search_end, step)
 
+        peak_start_tps[i]      = peak_s
+        estimated_onset_tps[i] = peak_s + pre_tp
+        peak_corrs[i]          = _pearson_r(
+            template_flat,
+            trial_3d[:, :, peak_s:peak_s + win_len].flatten())
+
+    return estimated_onset_tps, peak_start_tps, peak_corrs
+
+
+def estimate_covert_onsets_single(z_power_covert,
+                                   template_3d, win_len,
+                                   matched_ic_0idx, band_idx,
+                                   pre_tp, search_start, search_end, step=1):
+    """
+    Estimate covert onsets using a single template applied to all trials.
+
+    Used for the general-template condition (same template regardless of class).
+
+    Parameters
+    ----------
+    template_3d : np.ndarray [nICs x nBands x win_len], single template
+
+    Returns
+    -------
+    estimated_onset_tps, peak_start_tps, peak_corrs  (same layout as estimate_covert_onsets)
+    """
+    nTrials             = z_power_covert.shape[-1]
+    estimated_onset_tps = np.zeros(nTrials, dtype=int)
+    peak_start_tps      = np.zeros(nTrials, dtype=int)
+    peak_corrs          = np.zeros(nTrials)
+    template_flat       = template_3d.flatten()
+
+    if np.std(template_flat) < 1e-10:
+        estimated_onset_tps[:] = search_start + pre_tp
+        peak_start_tps[:]      = search_start
+        return estimated_onset_tps, peak_start_tps, peak_corrs
+
+    for i in range(nTrials):
+        trial_3d = z_power_covert[
+            np.ix_(matched_ic_0idx, band_idx,
+                   list(range(z_power_covert.shape[2])), [i])][:, :, :, 0]
+        _, _, peak_s, _, _ = slide_template(
+            trial_3d, template_flat, win_len, search_start, search_end, step)
+        peak_start_tps[i]      = peak_s
+        estimated_onset_tps[i] = peak_s + pre_tp
+        peak_corrs[i]          = _pearson_r(
+            template_flat,
+            trial_3d[:, :, peak_s:peak_s + win_len].flatten())
+
+    return estimated_onset_tps, peak_start_tps, peak_corrs
+
+
+def estimate_covert_onsets_group(z_power_covert, y_covert,
+                                  group_templates, win_len,
+                                  matched_ic_0idx, band_idx,
+                                  pre_tp, search_start, search_end, step=1):
+    """
+    Estimate covert onsets using consonant-group templates (W2/W3/W4u conditions).
+
+    Each trial uses the template of its consonant group (stop/nasal/fricative).
+    All three group templates have the same win_len for these window conditions.
+
+    Parameters
+    ----------
+    group_templates : dict {group_name: np.ndarray [nICs x nBands x win_len]}
+
+    Returns
+    -------
+    estimated_onset_tps, peak_start_tps, peak_corrs
+    """
+    nTrials             = z_power_covert.shape[-1]
+    estimated_onset_tps = np.zeros(nTrials, dtype=int)
+    peak_start_tps      = np.zeros(nTrials, dtype=int)
+    peak_corrs          = np.zeros(nTrials)
+
+    for i in range(nTrials):
+        group_name  = _get_group_name(int(y_covert[i]))
+        template_3d = group_templates.get(group_name)
+
+        if template_3d is None or np.all(template_3d == 0):
+            peak_start_tps[i]      = search_start
+            estimated_onset_tps[i] = search_start + pre_tp
+            peak_corrs[i]          = 0.0
+            continue
+
+        template_flat = template_3d.flatten()
+        trial_3d      = z_power_covert[
+            np.ix_(matched_ic_0idx, band_idx,
+                   list(range(z_power_covert.shape[2])), [i])][:, :, :, 0]
+        _, _, peak_s, _, _ = slide_template(
+            trial_3d, template_flat, win_len, search_start, search_end, step)
+        peak_start_tps[i]      = peak_s
+        estimated_onset_tps[i] = peak_s + pre_tp
+        peak_corrs[i]          = _pearson_r(
+            template_flat,
+            trial_3d[:, :, peak_s:peak_s + win_len].flatten())
+
+    return estimated_onset_tps, peak_start_tps, peak_corrs
+
+
+def estimate_covert_onsets_by_group_w4c(z_power_covert, y_covert,
+                                         group_templates,
+                                         consonant_pre_tps, post_tp_base,
+                                         matched_ic_0idx, band_idx,
+                                         search_start, search_end, step=1):
+    """
+    Estimate covert onsets for W4c using per-group templates (general or group).
+
+    Each trial uses its consonant-group template; win_len is group-specific.
+    Handles both build_general_template_consonant and
+    build_consonant_group_templates_consonant outputs (keyed by group_name).
+
+    Returns
+    -------
+    estimated_onset_tps, peak_start_tps, peak_corrs
+    """
+    nTrials             = z_power_covert.shape[-1]
+    estimated_onset_tps = np.zeros(nTrials, dtype=int)
+    peak_start_tps      = np.zeros(nTrials, dtype=int)
+    peak_corrs          = np.zeros(nTrials)
+
+    for i in range(nTrials):
+        group_name  = _get_group_name(int(y_covert[i]))
+        pre_tp      = consonant_pre_tps.get(group_name, 0)
+        win_len     = pre_tp + post_tp_base
+        template_3d = group_templates.get(group_name)
+
+        if template_3d is None or np.all(template_3d == 0):
+            peak_start_tps[i]      = search_start
+            estimated_onset_tps[i] = search_start + pre_tp
+            peak_corrs[i]          = 0.0
+            continue
+
+        template_flat = template_3d.flatten()
+        trial_3d      = z_power_covert[
+            np.ix_(matched_ic_0idx, band_idx,
+                   list(range(z_power_covert.shape[2])), [i])][:, :, :, 0]
+        _, _, peak_s, _, _ = slide_template(
+            trial_3d, template_flat, win_len, search_start, search_end, step)
         peak_start_tps[i]      = peak_s
         estimated_onset_tps[i] = peak_s + pre_tp
         peak_corrs[i]          = _pearson_r(
@@ -708,7 +996,9 @@ def _plot_onset_sanity(true_ms, estimated_ms, errors_ms,
     fig.suptitle(f'{subj} | Overt onset sanity check — {tag}', fontsize=11)
     plt.tight_layout()
 
-    fpath = os.path.join(save_dir,
+    figures_dir = os.path.join(save_dir, 'figures')
+    os.makedirs(figures_dir, exist_ok=True)
+    fpath = os.path.join(figures_dir,
                          f'{subj}_spoken_onset_check_{_safe_tag(tag)}.png')
     fig.savefig(fpath, dpi=150, bbox_inches='tight')
     plt.close(fig)
@@ -762,7 +1052,9 @@ def _plot_onset_curves_examples(trial_records, save_dir, subj, cond_code, tag, n
     fig.suptitle(f'{subj} | Overt onset curve examples — {tag}', fontsize=11)
     plt.tight_layout()
 
-    fpath = os.path.join(save_dir,
+    figures_dir = os.path.join(save_dir, 'figures')
+    os.makedirs(figures_dir, exist_ok=True)
+    fpath = os.path.join(figures_dir,
                          f'{subj}_spoken_onset_curves_{_safe_tag(tag)}.png')
     fig.savefig(fpath, dpi=150, bbox_inches='tight')
     plt.close(fig)
@@ -811,187 +1103,40 @@ def _classify_cv_fast(X, y, fp, n_splits=5, random_state=42):
     return svm_acc, svm_bal, rf_acc, rf_bal
 
 
-def _run_one_permutation(
-    seed,
-    z_power_overt_smooth, y_overt, onset_tps,
-    z_power_covert_smooth, y_covert,
-    overt_matched_0idx, covert_matched_0idx,
-    covert_keep_0idx,
-    band_idx, win_cond,
-    pre_tp, post_tp,
-    search_start_idx, search_end_bound, slide_step,
-    fp,
-    consonant_pre_tps=None, post_tp_base_w4c=None,
-):
-    """
-    One permutation iteration: shuffle overt class-template assignments,
-    run full pipeline (onset estimation → feature extraction → classification),
-    return (svm_acc, svm_bal, rf_acc, rf_bal).
-    """
-    rng     = np.random.default_rng(seed)
-    classes = list(range(1, len(SYLLABLES) + 1))
-    perm    = rng.permutation(classes)
-    # perm_map[orig_class] = new_label: template originally for orig_class
-    # is now assigned to new_label, so covert trials of new_label will use
-    # the wrong (shuffled) overt template for onset estimation.
-    perm_map = {cls: int(perm[i]) for i, cls in enumerate(classes)}
-
-    if win_cond in ('W2', 'W3', 'W4u'):
-        templates, win_len = build_class_templates(
-            z_power_overt_smooth, y_overt, onset_tps,
-            overt_matched_0idx, band_idx,
-            pre_tp=pre_tp, post_tp=post_tp)
-
-        # Reassign: label perm_map[c] now carries template originally built for c
-        shuffled = {perm_map[c]: templates[c] for c in classes}
-
-        est_onset_tps, _, _ = estimate_covert_onsets(
-            z_power_covert_smooth, y_covert,
-            shuffled, win_len,
-            covert_matched_0idx, band_idx,
-            pre_tp=pre_tp,
-            search_start=search_start_idx,
-            search_end=search_end_bound,
-            step=slide_step)
-
-        X = build_X_speech_window(
-            z_power_covert_smooth, covert_keep_0idx, est_onset_tps,
-            pre_onset_tp=pre_tp, post_onset_tp=post_tp,
-            band_idx=band_idx)
-
-    else:  # W4c — consonant-specific template sizes
-        templates_c, _ = build_class_templates_consonant(
-            z_power_overt_smooth, y_overt, onset_tps,
-            overt_matched_0idx, band_idx,
-            consonant_pre_tps, post_tp_base_w4c)
-
-        shuffled_c = {perm_map[c]: templates_c[c] for c in classes}
-
-        # Inline onset estimation: derive win_len from the shuffled template's
-        # actual shape to avoid size mismatches from cross-group shuffling.
-        nTrials       = z_power_covert_smooth.shape[-1]
-        total_T       = z_power_covert_smooth.shape[2]
-        est_onset_tps = np.zeros(nTrials, dtype=int)
-        for i in range(nTrials):
-            cls  = int(y_covert[i])
-            tmpl = shuffled_c.get(cls)
-            if tmpl is None or np.all(tmpl == 0):
-                est_onset_tps[i] = search_start_idx
-                continue
-            win_len_i = tmpl.shape[2]
-            pre_tp_i  = win_len_i - post_tp_base_w4c
-            trial_3d  = z_power_covert_smooth[
-                np.ix_(covert_matched_0idx, band_idx,
-                       list(range(total_T)), [i])][:, :, :, 0]
-            _, _, peak_s, _, _ = slide_template(
-                trial_3d, tmpl.flatten(), win_len_i,
-                search_start_idx, search_end_bound, slide_step)
-            est_onset_tps[i] = peak_s + pre_tp_i
-
-        X, _ = build_X_covert_consonant(
-            z_power_covert_smooth, y_covert, est_onset_tps,
-            covert_keep_0idx, band_idx,
-            consonant_pre_tps, post_tp_base_w4c)
-
-    return _classify_cv_fast(X, y_covert, fp)
-
-
-def _compute_X_true(
-    cfg,
-    z_power_overt_smooth, y_overt, onset_tps,
-    z_power_covert_smooth, y_covert,
-    overt_matched_0idx, covert_matched_0idx,
-    covert_keep_0idx,
-    search_start_idx, search_end_bound, slide_step,
-    consonant_pre_tps=None, post_tp_base_w4c=None,
-):
-    """Re-extract covert feature matrix using true (non-shuffled) overt templates."""
-    win_cond = cfg['win_cond']
-    band_idx = cfg['band_idx']
-    pre_tp   = cfg['pre_tp']
-    post_tp  = cfg['post_tp']
-
-    if win_cond in ('W2', 'W3', 'W4u'):
-        templates, win_len = build_class_templates(
-            z_power_overt_smooth, y_overt, onset_tps,
-            overt_matched_0idx, band_idx, pre_tp=pre_tp, post_tp=post_tp)
-        est_onset_tps, _, _ = estimate_covert_onsets(
-            z_power_covert_smooth, y_covert, templates, win_len,
-            covert_matched_0idx, band_idx, pre_tp=pre_tp,
-            search_start=search_start_idx, search_end=search_end_bound,
-            step=slide_step)
-        X = build_X_speech_window(
-            z_power_covert_smooth, covert_keep_0idx, est_onset_tps,
-            pre_onset_tp=pre_tp, post_onset_tp=post_tp, band_idx=band_idx)
-    else:  # W4c
-        templates_c, _ = build_class_templates_consonant(
-            z_power_overt_smooth, y_overt, onset_tps,
-            overt_matched_0idx, band_idx, consonant_pre_tps, post_tp_base_w4c)
-        est_onset_tps, _, _ = estimate_covert_onsets_consonant(
-            z_power_covert_smooth, y_covert, templates_c,
-            consonant_pre_tps, post_tp_base_w4c,
-            covert_matched_0idx, band_idx,
-            search_start=search_start_idx, search_end=search_end_bound,
-            step=slide_step)
-        X, _ = build_X_covert_consonant(
-            z_power_covert_smooth, y_covert, est_onset_tps,
-            covert_keep_0idx, band_idx, consonant_pre_tps, post_tp_base_w4c)
-    return X
-
-
 def _plot_permutation_null(
-    null_tmpl_svm_acc, null_tmpl_svm_bal, null_tmpl_rf_acc, null_tmpl_rf_bal,
-    null_lbl_svm_acc,  null_lbl_svm_bal,  null_lbl_rf_acc,  null_lbl_rf_bal,
+    null_svm_acc, null_svm_bal, null_rf_acc, null_rf_bal,
     true_svm_acc, true_svm_bal, true_rf_acc, true_rf_bal,
-    p_tmpl_svm_acc, p_tmpl_svm_bal, p_tmpl_rf_acc, p_tmpl_rf_bal,
-    p_lbl_svm_acc,  p_lbl_svm_bal,  p_lbl_rf_acc,  p_lbl_rf_bal,
+    p_svm_acc, p_svm_bal, p_rf_acc, p_rf_bal,
     tag, save_dir, subj, cond_code, n_perms,
 ):
-    """
-    2-row × 4-col null distribution figure.
-    Row 0: template-label permutation (tests onset estimation specificity).
-    Row 1: covert-trial-label permutation (tests classifier performance).
-    """
+    """Four-panel covert-trial-label permutation null distribution figure."""
     chance = 1.0 / len(SYLLABLES)
-    fig, axes = plt.subplots(2, 4, figsize=(20, 9))
+    fig, axes = plt.subplots(1, 4, figsize=(20, 5))
 
-    rows = [
-        (0, null_tmpl_svm_acc, null_tmpl_svm_bal, null_tmpl_rf_acc, null_tmpl_rf_bal,
-         p_tmpl_svm_acc, p_tmpl_svm_bal, p_tmpl_rf_acc, p_tmpl_rf_bal,
-         'Template-label permutation\n(onset estimation specificity)',
-         'darkorange'),
-        (1, null_lbl_svm_acc,  null_lbl_svm_bal,  null_lbl_rf_acc,  null_lbl_rf_bal,
-         p_lbl_svm_acc,  p_lbl_svm_bal,  p_lbl_rf_acc,  p_lbl_rf_bal,
-         'Covert-trial-label permutation\n(classifier above-chance check)',
-         'steelblue'),
+    specs = [
+        (axes[0], null_svm_acc, true_svm_acc, p_svm_acc, 'SVM accuracy'),
+        (axes[1], null_svm_bal, true_svm_bal, p_svm_bal, 'SVM balanced accuracy'),
+        (axes[2], null_rf_acc,  true_rf_acc,  p_rf_acc,  'RF accuracy'),
+        (axes[3], null_rf_bal,  true_rf_bal,  p_rf_bal,  'RF balanced accuracy'),
     ]
-    col_labels = ['SVM accuracy', 'SVM balanced accuracy', 'RF accuracy', 'RF balanced accuracy']
+    for ax, null_dist, true_val, pval, metric_name in specs:
+        ax.hist(null_dist, bins=40, color='steelblue', edgecolor='k', alpha=0.75,
+                label=f'Null (N={n_perms})\nmean={null_dist.mean():.3f}')
+        ax.axvline(true_val, color='red', linestyle='--', linewidth=2,
+                   label=f'True = {true_val:.3f}')
+        ax.axvline(chance, color='gray', linestyle=':', linewidth=1.2,
+                   label=f'Chance = {chance:.3f}')
+        ax.set_xlabel(metric_name, fontsize=9)
+        ax.set_ylabel('Count', fontsize=9)
+        ax.set_title(f'{metric_name}\np = {pval:.4f}', fontsize=9)
+        ax.legend(fontsize=8)
+        ax.grid(axis='y', alpha=0.35)
 
-    for row_i, n0, n1, n2, n3, p0, p1, p2, p3, row_title, color in rows:
-        for col_i, (null_dist, true_val, pval, metric_name) in enumerate(zip(
-            [n0, n1, n2, n3],
-            [true_svm_acc, true_svm_bal, true_rf_acc, true_rf_bal],
-            [p0, p1, p2, p3],
-            col_labels,
-        )):
-            ax = axes[row_i, col_i]
-            ax.hist(null_dist, bins=40, color=color, edgecolor='k', alpha=0.70,
-                    label=f'Null (N={n_perms})\nmean={null_dist.mean():.3f}')
-            ax.axvline(true_val, color='red', linestyle='--', linewidth=2,
-                       label=f'True = {true_val:.3f}')
-            ax.axvline(chance, color='gray', linestyle=':', linewidth=1.2,
-                       label=f'Chance = {chance:.3f}')
-            ax.set_xlabel(metric_name, fontsize=8)
-            ax.set_ylabel('Count', fontsize=8)
-            ax.set_title(f'p = {pval:.4f}', fontsize=9)
-            ax.legend(fontsize=7)
-            ax.grid(axis='y', alpha=0.35)
-            if col_i == 0:
-                ax.set_ylabel(row_title + '\n\nCount', fontsize=8)
-
-    fig.suptitle(f'{subj} | Permutation baseline — {tag}', fontsize=11)
+    fig.suptitle(f'{subj} | Label permutation baseline — {tag}', fontsize=11)
     plt.tight_layout()
-    fpath = os.path.join(save_dir, f'{subj}_{cond_code}_permutation_{_safe_tag(tag)}.png')
+    figures_dir = os.path.join(save_dir, 'figures')
+    os.makedirs(figures_dir, exist_ok=True)
+    fpath = os.path.join(figures_dir, f'{subj}_{cond_code}_permutation_{_safe_tag(tag)}.png')
     fig.savefig(fpath, dpi=150, bbox_inches='tight')
     plt.close(fig)
     print(f'  Saved permutation plot: {fpath}')
@@ -999,49 +1144,36 @@ def _plot_permutation_null(
 
 def run_permutation_baseline(
     top_k_configs,
-    z_power_overt_smooth, y_overt, onset_tps,
-    z_power_covert_smooth, y_covert,
-    overt_matched_0idx, covert_matched_0idx,
-    covert_keep_0idx,
-    search_start_idx, search_end_bound, slide_step,
+    y_covert,
     fp,
     n_perms,
     exp_results,
+    exp_X,
     save_dir, subj, cond_code,
-    consonant_pre_tps=None, post_tp_base_w4c=None,
 ):
     """
-    Two permutation tests for each of the top-k covert classification experiments:
+    Covert-trial-label permutation test for the top-k classification experiments.
 
-    1. Template-label permutation: overt class-template assignments are shuffled,
-       then the full pipeline (onset estimation → window extraction → classification)
-       is re-run N times.  Tests whether correct template-class matching contributes
-       class-specific temporal structure to the onset estimate.
+    For each experiment, the feature matrix X (stored from phase B) is held fixed
+    while covert trial labels are shuffled N times and the classifier is re-run.
+    p-value = proportion of permutations >= true accuracy.
 
-    2. Covert-trial-label permutation: covert trial labels are shuffled while keeping
-       the feature matrix X (extracted with true templates) fixed, and the classifier
-       is re-run N times.  Standard check that the classifier performs above chance.
-
-    p-value = proportion of permutations >= true accuracy for both tests.
-    Saves per-experiment 2×4 panel figures and a combined CSV.
+    Saves per-experiment null distribution plots and a combined CSV.
     """
     exp_lookup = {r.name: r for r in exp_results}
     perm_rows  = []
     sep        = '-' * 60
 
     for cfg in top_k_configs:
-        win_cond  = cfg['win_cond']
-        band_name = cfg['band_name']
-        band_idx  = cfg['band_idx']
-        pre_tp    = cfg['pre_tp']
-        post_tp   = cfg['post_tp']
-        exp_name  = cfg['exp_name']
-        exp_tag   = cfg['tag']
+        exp_name = cfg['exp_name']
+        exp_tag  = cfg['tag']
 
         true_result = exp_lookup.get(exp_name)
-        if true_result is None:
+        X           = exp_X.get(exp_name)
+
+        if true_result is None or X is None:
             print(f'\n  Permutation baseline [{exp_tag}]: '
-                  f'no matching experiment result ({exp_name}), skipping.')
+                  f'missing result or X, skipping.')
             continue
 
         true_svm_acc = true_result.svm_accuracy
@@ -1050,123 +1182,59 @@ def run_permutation_baseline(
         true_rf_bal  = true_result.rf_bal_acc
 
         print(f'\n  {sep}')
-        print(f'  Permutation baseline: {exp_tag}')
-        print(f'  N = {n_perms}  |  experiment: {exp_name}')
+        print(f'  Label permutation: {exp_tag}')
+        print(f'  N = {n_perms}  |  X shape = {X.shape}')
         print(f'  True — SVM acc={true_svm_acc:.3f} bal={true_svm_bal:.3f}  '
               f'RF acc={true_rf_acc:.3f} bal={true_rf_bal:.3f}')
+        print(f'  Running {n_perms} label permutations...')
 
-        # --- (1) Template-label permutation ---
-        print(f'  Running template-label permutation ({n_perms} iterations)...')
-        tmpl_results = Parallel(n_jobs=-1, prefer='threads')(
-            delayed(_run_one_permutation)(
-                seed,
-                z_power_overt_smooth, y_overt, onset_tps,
-                z_power_covert_smooth, y_covert,
-                overt_matched_0idx, covert_matched_0idx,
-                covert_keep_0idx,
-                band_idx, win_cond,
-                pre_tp, post_tp,
-                search_start_idx, search_end_bound, slide_step,
-                fp,
-                consonant_pre_tps if win_cond == 'W4c' else None,
-                post_tp_base_w4c  if win_cond == 'W4c' else None,
-            )
-            for seed in range(n_perms)
-        )
-
-        null_tmpl_svm_acc = np.array([r[0] for r in tmpl_results])
-        null_tmpl_svm_bal = np.array([r[1] for r in tmpl_results])
-        null_tmpl_rf_acc  = np.array([r[2] for r in tmpl_results])
-        null_tmpl_rf_bal  = np.array([r[3] for r in tmpl_results])
-
-        p_tmpl_svm_acc = float(np.mean(null_tmpl_svm_acc >= true_svm_acc))
-        p_tmpl_svm_bal = float(np.mean(null_tmpl_svm_bal >= true_svm_bal))
-        p_tmpl_rf_acc  = float(np.mean(null_tmpl_rf_acc  >= true_rf_acc))
-        p_tmpl_rf_bal  = float(np.mean(null_tmpl_rf_bal  >= true_rf_bal))
-
-        print(f'  Template perm null — '
-              f'SVM acc={null_tmpl_svm_acc.mean():.3f}±{null_tmpl_svm_acc.std():.3f}  '
-              f'RF acc={null_tmpl_rf_acc.mean():.3f}±{null_tmpl_rf_acc.std():.3f}')
-        print(f'  Template perm p    — '
-              f'SVM acc={p_tmpl_svm_acc:.4f} bal={p_tmpl_svm_bal:.4f}  '
-              f'RF acc={p_tmpl_rf_acc:.4f} bal={p_tmpl_rf_bal:.4f}')
-
-        # --- (2) Covert-trial-label permutation ---
-        # Re-extract X once with true templates, then only shuffle y N times.
-        print(f'  Re-extracting X with true templates for label permutation...')
-        X_true = _compute_X_true(
-            cfg,
-            z_power_overt_smooth, y_overt, onset_tps,
-            z_power_covert_smooth, y_covert,
-            overt_matched_0idx, covert_matched_0idx,
-            covert_keep_0idx,
-            search_start_idx, search_end_bound, slide_step,
-            consonant_pre_tps if win_cond == 'W4c' else None,
-            post_tp_base_w4c  if win_cond == 'W4c' else None,
-        )
-
-        print(f'  Running covert-label permutation ({n_perms} iterations)...')
         lbl_results = Parallel(n_jobs=-1, prefer='threads')(
             delayed(_classify_cv_fast)(
-                X_true,
+                X,
                 np.random.default_rng(seed).permutation(y_covert),
                 fp,
             )
             for seed in range(n_perms)
         )
 
-        null_lbl_svm_acc = np.array([r[0] for r in lbl_results])
-        null_lbl_svm_bal = np.array([r[1] for r in lbl_results])
-        null_lbl_rf_acc  = np.array([r[2] for r in lbl_results])
-        null_lbl_rf_bal  = np.array([r[3] for r in lbl_results])
+        null_svm_acc = np.array([r[0] for r in lbl_results])
+        null_svm_bal = np.array([r[1] for r in lbl_results])
+        null_rf_acc  = np.array([r[2] for r in lbl_results])
+        null_rf_bal  = np.array([r[3] for r in lbl_results])
 
-        p_lbl_svm_acc = float(np.mean(null_lbl_svm_acc >= true_svm_acc))
-        p_lbl_svm_bal = float(np.mean(null_lbl_svm_bal >= true_svm_bal))
-        p_lbl_rf_acc  = float(np.mean(null_lbl_rf_acc  >= true_rf_acc))
-        p_lbl_rf_bal  = float(np.mean(null_lbl_rf_bal  >= true_rf_bal))
+        p_svm_acc = float(np.mean(null_svm_acc >= true_svm_acc))
+        p_svm_bal = float(np.mean(null_svm_bal >= true_svm_bal))
+        p_rf_acc  = float(np.mean(null_rf_acc  >= true_rf_acc))
+        p_rf_bal  = float(np.mean(null_rf_bal  >= true_rf_bal))
 
-        print(f'  Label perm null    — '
-              f'SVM acc={null_lbl_svm_acc.mean():.3f}±{null_lbl_svm_acc.std():.3f}  '
-              f'RF acc={null_lbl_rf_acc.mean():.3f}±{null_lbl_rf_acc.std():.3f}')
-        print(f'  Label perm p       — '
-              f'SVM acc={p_lbl_svm_acc:.4f} bal={p_lbl_svm_bal:.4f}  '
-              f'RF acc={p_lbl_rf_acc:.4f} bal={p_lbl_rf_bal:.4f}')
+        print(f'  Null — SVM acc={null_svm_acc.mean():.3f}±{null_svm_acc.std():.3f}  '
+              f'RF acc={null_rf_acc.mean():.3f}±{null_rf_acc.std():.3f}')
+        print(f'  p    — SVM acc={p_svm_acc:.4f} bal={p_svm_bal:.4f}  '
+              f'RF acc={p_rf_acc:.4f} bal={p_rf_bal:.4f}')
 
         perm_rows.append({
-            'exp_name':                  exp_name,
-            'win_cond':                  win_cond,
-            'band_name':                 band_name,
-            'true_svm_acc':              round(true_svm_acc, 4),
-            'true_svm_bal':              round(true_svm_bal, 4),
-            'true_rf_acc':               round(true_rf_acc,  4),
-            'true_rf_bal':               round(true_rf_bal,  4),
-            # template permutation
-            'tmpl_null_svm_acc_mean':    round(float(null_tmpl_svm_acc.mean()), 4),
-            'tmpl_null_rf_acc_mean':     round(float(null_tmpl_rf_acc.mean()),  4),
-            'tmpl_null_svm_acc_std':     round(float(null_tmpl_svm_acc.std()),  4),
-            'tmpl_null_rf_acc_std':      round(float(null_tmpl_rf_acc.std()),   4),
-            'p_tmpl_svm_acc':            round(p_tmpl_svm_acc, 4),
-            'p_tmpl_svm_bal':            round(p_tmpl_svm_bal, 4),
-            'p_tmpl_rf_acc':             round(p_tmpl_rf_acc,  4),
-            'p_tmpl_rf_bal':             round(p_tmpl_rf_bal,  4),
-            # label permutation
-            'lbl_null_svm_acc_mean':     round(float(null_lbl_svm_acc.mean()),  4),
-            'lbl_null_rf_acc_mean':      round(float(null_lbl_rf_acc.mean()),   4),
-            'lbl_null_svm_acc_std':      round(float(null_lbl_svm_acc.std()),   4),
-            'lbl_null_rf_acc_std':       round(float(null_lbl_rf_acc.std()),    4),
-            'p_lbl_svm_acc':             round(p_lbl_svm_acc, 4),
-            'p_lbl_svm_bal':             round(p_lbl_svm_bal, 4),
-            'p_lbl_rf_acc':              round(p_lbl_rf_acc,  4),
-            'p_lbl_rf_bal':              round(p_lbl_rf_bal,  4),
-            'n_permutations':            n_perms,
+            'exp_name':           exp_name,
+            'true_svm_acc':       round(true_svm_acc, 4),
+            'true_svm_bal':       round(true_svm_bal, 4),
+            'true_rf_acc':        round(true_rf_acc,  4),
+            'true_rf_bal':        round(true_rf_bal,  4),
+            'null_svm_acc_mean':  round(float(null_svm_acc.mean()), 4),
+            'null_svm_bal_mean':  round(float(null_svm_bal.mean()), 4),
+            'null_rf_acc_mean':   round(float(null_rf_acc.mean()),  4),
+            'null_rf_bal_mean':   round(float(null_rf_bal.mean()),  4),
+            'null_svm_acc_std':   round(float(null_svm_acc.std()),  4),
+            'null_rf_acc_std':    round(float(null_rf_acc.std()),   4),
+            'p_svm_acc':          round(p_svm_acc, 4),
+            'p_svm_bal':          round(p_svm_bal, 4),
+            'p_rf_acc':           round(p_rf_acc,  4),
+            'p_rf_bal':           round(p_rf_bal,  4),
+            'n_permutations':     n_perms,
         })
 
         _plot_permutation_null(
-            null_tmpl_svm_acc, null_tmpl_svm_bal, null_tmpl_rf_acc, null_tmpl_rf_bal,
-            null_lbl_svm_acc,  null_lbl_svm_bal,  null_lbl_rf_acc,  null_lbl_rf_bal,
+            null_svm_acc, null_svm_bal, null_rf_acc, null_rf_bal,
             true_svm_acc, true_svm_bal, true_rf_acc, true_rf_bal,
-            p_tmpl_svm_acc, p_tmpl_svm_bal, p_tmpl_rf_acc, p_tmpl_rf_bal,
-            p_lbl_svm_acc,  p_lbl_svm_bal,  p_lbl_rf_acc,  p_lbl_rf_bal,
+            p_svm_acc, p_svm_bal, p_rf_acc, p_rf_bal,
             exp_tag, save_dir, subj, cond_code, n_perms)
 
     if perm_rows:
@@ -1176,13 +1244,10 @@ def run_permutation_baseline(
         print(f'\n  Permutation baseline CSV saved: {fpath}')
 
         print(f'\n  Permutation baseline summary:')
-        hdr = f'  {"Experiment":<50} {"p_tmpl(SVM)":<13} {"p_tmpl(RF)":<13} {"p_lbl(SVM)":<13} {"p_lbl(RF)"}'
-        print(hdr)
-        print(f'  {"-"*len(hdr)}')
+        print(f'  {"Experiment":<55} {"p(SVM acc)":<12} {"p(RF acc)"}')
+        print(f'  {"-"*80}')
         for row in perm_rows:
-            print(f'  {row["exp_name"]:<50} '
-                  f'{row["p_tmpl_svm_acc"]:<13.4f} {row["p_tmpl_rf_acc"]:<13.4f} '
-                  f'{row["p_lbl_svm_acc"]:<13.4f} {row["p_lbl_rf_acc"]:.4f}')
+            print(f'  {row["exp_name"]:<55} {row["p_svm_acc"]:<12.4f} {row["p_rf_acc"]:.4f}')
 
     return perm_rows
 
@@ -1193,9 +1258,13 @@ def run_permutation_baseline(
 
 def plot_covert_summary_figures(all_results, save_dir, subj, cond_code):
     """
-    One 2×2 summary figure per window condition (baseline / W2 / W3 / W4u / W4c).
+    One 2×2 summary figure per (window_condition × template_type).
 
-    Layout mirrors classification_overt_band_sweep.py:
+    Window conditions : baseline, W2, W3, W4u, W4c
+    Template types    : est_with (class-specific), gen_tmpl (general), grp_tmpl (consonant-group)
+    Baseline gets a single figure (no template type).
+
+    Layout:
       Top-left  — accuracy bar chart (SVM acc, SVM bal, RF acc, RF bal)
       Top-right — RF per-class recall heatmap  (experiments × syllables)
       Bot-left  — SVM per-class recall heatmap
@@ -1206,21 +1275,19 @@ def plot_covert_summary_figures(all_results, save_dir, subj, cond_code):
 
     chance = 1.0 / len(SYLLABLES)
 
+    _TMPL_MARKER = ('_est_with_', '_gen_tmpl_', '_grp_tmpl_')
+
     def _short_label(r):
-        if '_est_with_' in r.name:
-            # name format: {Wx}_est_with_{band_name}_{ic_tag}IC[_...suffix]
-            after_win = r.name.split('_est_with_', 1)[1]
-            # strip IC tag and anything after it
-            for ic_tag in ('_all_keepIC', '_matchedIC'):
-                if ic_tag in after_win:
-                    band_part = after_win.split(ic_tag, 1)[0]
-                    break
-            else:
-                band_part = after_win
-            return band_part
+        for marker in _TMPL_MARKER:
+            if marker in r.name:
+                after = r.name.split(marker, 1)[1]
+                for ic_tag in ('_all_keepIC', '_matchedIC'):
+                    if ic_tag in after:
+                        return after.split(ic_tag, 1)[0]
+                return after
         return r.name
 
-    def _plot_win_summary(results, win_tag, win_label):
+    def _plot_win_summary(results, file_tag, title):
         if not results:
             return
 
@@ -1254,7 +1321,7 @@ def plot_covert_summary_figures(all_results, save_dir, subj, cond_code):
         ax_acc.grid(axis='y', alpha=0.4)
         ax_acc.set_ylim(0, 1)
 
-        def _heatmap(ax, matrix, title):
+        def _heatmap(ax, matrix, hm_title):
             im = ax.imshow(matrix, aspect='auto', cmap='RdYlGn', vmin=0, vmax=1)
             ax.set_xticks(range(len(SYLLABLES)))
             ax.set_xticklabels(SYLLABLES, fontsize=10)
@@ -1262,7 +1329,7 @@ def plot_covert_summary_figures(all_results, save_dir, subj, cond_code):
             ax.set_yticklabels(labels, fontsize=7)
             ax.set_xlabel('Syllable')
             ax.set_ylabel('Experiment')
-            ax.set_title(title)
+            ax.set_title(hm_title)
             plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label='Recall')
             for i in range(n):
                 for j in range(len(SYLLABLES)):
@@ -1275,26 +1342,42 @@ def plot_covert_summary_figures(all_results, save_dir, subj, cond_code):
         _heatmap(ax_svm,  svm_recall,  'SVM per-class recall')
         _heatmap(ax_mean, mean_recall, 'Mean(RF+SVM) per-class recall')
 
-        fig.suptitle(
-            f'{subj} | Covert — {win_label}',
-            fontsize=12)
+        fig.suptitle(f'{subj} | Covert — {title}', fontsize=12)
         plt.tight_layout()
-        fpath = os.path.join(save_dir, f'{subj}_{cond_code}_{win_tag}_summary.png')
+        fpath = os.path.join(save_dir, f'{subj}_{cond_code}_{file_tag}_summary.png')
         fig.savefig(fpath, dpi=150, bbox_inches='tight')
         plt.close(fig)
         print(f'  Saved summary: {fpath}')
 
-    for win_tag, win_label, pfx in [
-        ('baseline', 'baseline (full epoch)',    'baseline'),
-        ('W2',  'W2 — speech window',            'W2_'),
-        ('W3',  'W3 — pre-speech',               'W3_'),
-        ('W4u', 'W4u — uniform pre-onset',       'W4u_'),
-        ('W4c', 'W4c — consonant-specific',      'W4c_'),
-    ]:
-        subset = [r for r in all_results
-                  if (pfx == 'baseline' and r.name.startswith('baseline'))
-                  or (pfx != 'baseline' and r.name.startswith(pfx))]
-        _plot_win_summary(subset, win_tag, win_label)
+    # Baseline: single figure, no template type
+    _plot_win_summary(
+        [r for r in all_results if r.name.startswith('baseline')],
+        'baseline', 'baseline (full epoch)',
+    )
+
+    WIN_TYPES = [
+        ('W2',  'W2 — speech window'),
+        ('W3',  'W3 — pre-speech'),
+        ('W4u', 'W4u — uniform pre-onset'),
+        ('W4c', 'W4c — consonant-specific'),
+    ]
+    TMPL_TYPES = [
+        ('est_with', 'class-specific template'),
+        ('gen_tmpl', 'general template'),
+        ('grp_tmpl', 'consonant-group template'),
+    ]
+
+    for win_tag, win_label in WIN_TYPES:
+        pfx = win_tag + '_'
+        for tmpl_key, tmpl_label in TMPL_TYPES:
+            marker = f'_{tmpl_key}_'
+            subset = [r for r in all_results
+                      if r.name.startswith(pfx) and marker in r.name]
+            _plot_win_summary(
+                subset,
+                f'{win_tag}_{tmpl_key}',
+                f'{win_label} | {tmpl_label}',
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1508,7 +1591,7 @@ def main():
         post_tp_base_w4c = int(CONSONANT_POST_BASE_MS / 1000 * FS)
 
     # Output dir
-    save_dir_root = os.path.join(args.output_dir, subj, cond_label)
+    save_dir_root = os.path.join(args.output_dir, subj)
     save_dir_onset_overt_test = os.path.join(save_dir_root, 'overt_onset_test')
     os.makedirs(save_dir_onset_overt_test, exist_ok=True)
     save_dir_covert = os.path.join(save_dir_root, 'covert_classification')
@@ -1553,10 +1636,10 @@ def main():
     print(f'{sep}')
 
     # ==================================================================
-    # [1/5] Load and preprocess OVERT data
+    # [1/6] Load and preprocess OVERT data
     # ==================================================================
     print(f'\n{sep}')
-    print('  [1/5] Loading and preprocessing OVERT data...')
+    print('  [1/6] Loading and preprocessing OVERT data...')
     print(f'{sep}')
 
     overt_path = os.path.join(
@@ -1610,10 +1693,10 @@ def main():
     print(f'  Overt trials after rejection: {len(y_overt)}')
 
     # ==================================================================
-    # [2/5] Load and preprocess COVERT data
+    # [2/6] Load and preprocess COVERT data
     # ==================================================================
     print(f'\n{sep}')
-    print('  [2/5] Loading and preprocessing COVERT data...')
+    print('  [2/6] Loading and preprocessing COVERT data...')
     print(f'{sep}')
 
     covert_path = os.path.join(
@@ -1651,13 +1734,13 @@ def main():
           f'({args.search_start_ms}–{args.search_end_ms} ms from t=0)')
 
     # ==================================================================
-    # [3/5] Overt onset estimation sanity check
+    # [3/6] Overt onset estimation sanity check
     # ==================================================================
     sanity_metrics_list = []
 
     if not args.skip_sanity_check:
         print(f'\n{sep}')
-        print('  [3/5] Overt onset estimation sanity check...')
+        print('  [3/6] Overt onset estimation sanity check...')
         print(f'{sep}')
 
         # Run sanity check for each requested window condition x band set
@@ -1802,10 +1885,10 @@ def main():
         print(f'\n  [3/5] Skipping sanity check (--skip-sanity-check)')
 
     # ==================================================================
-    # [4/5] Baseline — full epoch, all-keep covert ICs, all bands
+    # [4/6] Baseline — full epoch, all-keep covert ICs, all bands
     # ==================================================================
     print(f'\n{sep}')
-    print('  [4/5] Baseline — full covert epoch (0 → 1950 ms), all-keep ICs, all bands')
+    print('  [4/6] Baseline — full covert epoch (0 → 1950 ms), all-keep ICs, all bands')
     print(f'{sep}')
 
     all_results = []
@@ -1864,7 +1947,7 @@ def main():
         print(f'  Fixed params saved: {fixed_params_path}\n')
 
     # ==================================================================
-    # [5/5] Template-matching experiments
+    # [5/6] Template-matching experiments
     #        Phase A (sequential): build overt templates + estimate covert onsets
     #                              + extract covert feature matrices for every
     #                              window condition × band set × IC condition.
@@ -1873,14 +1956,15 @@ def main():
     #        every template-matching call, so inner_jobs=1 avoids over-subscription.
     # ==================================================================
     print(f'\n{sep}')
-    print('  [5/5] Template-matching experiments')
+    print('  [5/6] Template-matching experiments')
     print(f'{sep}')
 
     ic_blocks = [
         ('all_keep',    covert_keep_0idx,    ic_labels_covert_keep),
     ]
-    pending    = []   # delayed(run_covert_exp)(...) for every template-matching exp
-    exp_configs = {}  # exp_name → config dict for permutation test reconstruction
+    pending     = []   # delayed(run_covert_exp)(...) for every template-matching exp
+    exp_configs = {}   # exp_name → config dict
+    exp_X       = {}   # exp_name → feature matrix X (for label permutation test)
 
     # ------------------------------------------------------------------
     # W2: speech window [onset, onset + N]
@@ -1935,6 +2019,63 @@ def main():
                 exp_configs[_ename] = dict(
                     win_cond='W2', band_name=band_name, band_idx=band_idx,
                     pre_tp=0, post_tp=speech_window_tp)
+                exp_X[_ename] = X
+
+            # --- W2 general template (single template, all trials) ---
+            gen_tmpl_w2, _ = build_general_template(
+                z_power_overt_smooth, onset_tps,
+                overt_matched_0idx, band_idx, pre_tp=0, post_tp=speech_window_tp)
+            est_onset_gen_w2, _, peak_corrs_gen = estimate_covert_onsets_single(
+                z_power_covert_smooth, gen_tmpl_w2, win_len_w2,
+                covert_matched_0idx, band_idx, pre_tp=0,
+                search_start=search_start_idx, search_end=search_end_bound,
+                step=args.slide_step)
+            print(f'  W2 gen-template peak corr: '
+                  f'mean={np.mean(peak_corrs_gen):.3f}  '
+                  f'min={np.min(peak_corrs_gen):.3f}  max={np.max(peak_corrs_gen):.3f}')
+
+            for ic_tag, ic_0idx_feats, ic_lbl_list in ic_blocks:
+                _ename = f'W2_gen_tmpl_{band_name}_{ic_tag}IC'
+                X = build_X_speech_window(
+                    z_power_covert_smooth, ic_0idx_feats, est_onset_gen_w2,
+                    pre_onset_tp=0, post_onset_tp=speech_window_tp, band_idx=band_idx)
+                pending.append(delayed(run_covert_exp)(
+                    _ename, X, y_covert, save_dir_covert, subj, cond_code,
+                    ic_set=ic_tag, band_set=band_name, feature='z_power_smooth',
+                    window=f'gen_tmpl_w_{speech_window_tp}tp',
+                    inner_jobs=1, band_idx_vec=band_idx,
+                    nICs=len(ic_0idx_feats), nBands=len(band_idx),
+                    nTime=speech_window_tp,
+                    ic_labels=ic_lbl_list, time_vec=time_vec, **fp))
+                exp_X[_ename] = X
+
+            # --- W2 consonant-group template (3 templates) ---
+            grp_tmpls_w2, _ = build_consonant_group_templates(
+                z_power_overt_smooth, y_overt, onset_tps,
+                overt_matched_0idx, band_idx, pre_tp=0, post_tp=speech_window_tp)
+            est_onset_grp_w2, _, peak_corrs_grp = estimate_covert_onsets_group(
+                z_power_covert_smooth, y_covert, grp_tmpls_w2, win_len_w2,
+                covert_matched_0idx, band_idx, pre_tp=0,
+                search_start=search_start_idx, search_end=search_end_bound,
+                step=args.slide_step)
+            print(f'  W2 grp-template peak corr: '
+                  f'mean={np.mean(peak_corrs_grp):.3f}  '
+                  f'min={np.min(peak_corrs_grp):.3f}  max={np.max(peak_corrs_grp):.3f}')
+
+            for ic_tag, ic_0idx_feats, ic_lbl_list in ic_blocks:
+                _ename = f'W2_grp_tmpl_{band_name}_{ic_tag}IC'
+                X = build_X_speech_window(
+                    z_power_covert_smooth, ic_0idx_feats, est_onset_grp_w2,
+                    pre_onset_tp=0, post_onset_tp=speech_window_tp, band_idx=band_idx)
+                pending.append(delayed(run_covert_exp)(
+                    _ename, X, y_covert, save_dir_covert, subj, cond_code,
+                    ic_set=ic_tag, band_set=band_name, feature='z_power_smooth',
+                    window=f'grp_tmpl_w_{speech_window_tp}tp',
+                    inner_jobs=1, band_idx_vec=band_idx,
+                    nICs=len(ic_0idx_feats), nBands=len(band_idx),
+                    nTime=speech_window_tp,
+                    ic_labels=ic_lbl_list, time_vec=time_vec, **fp))
+                exp_X[_ename] = X
 
             # for feat_band_name, feat_band_idx in band_items:
             #     for ic_tag, ic_0idx_feats, ic_lbl_list in ic_blocks:
@@ -2006,6 +2147,59 @@ def main():
                 exp_configs[_ename] = dict(
                     win_cond='W3', band_name=band_name, band_idx=band_idx,
                     pre_tp=pre_onset_w3_tp, post_tp=0)
+                exp_X[_ename] = X
+
+            # --- W3 general template ---
+            gen_tmpl_w3, _ = build_general_template(
+                z_power_overt_smooth, onset_tps,
+                overt_matched_0idx, band_idx,
+                pre_tp=pre_onset_w3_tp, post_tp=0)
+            est_onset_gen_w3, _, _ = estimate_covert_onsets_single(
+                z_power_covert_smooth, gen_tmpl_w3, win_len_w3,
+                covert_matched_0idx, band_idx, pre_tp=pre_onset_w3_tp,
+                search_start=search_start_idx, search_end=search_end_bound,
+                step=args.slide_step)
+
+            for ic_tag, ic_0idx_feats, ic_lbl_list in ic_blocks:
+                _ename = f'W3_gen_tmpl_{band_name}_{ic_tag}IC_pre{W3_PRE_ONSET_MS}ms'
+                X = build_X_speech_window(
+                    z_power_covert_smooth, ic_0idx_feats, est_onset_gen_w3,
+                    pre_onset_tp=pre_onset_w3_tp, post_onset_tp=0, band_idx=band_idx)
+                pending.append(delayed(run_covert_exp)(
+                    _ename, X, y_covert, save_dir_covert, subj, cond_code,
+                    ic_set=ic_tag, band_set=band_name, feature='z_power_smooth',
+                    window=f'gen_tmpl_onset-{pre_onset_w3_tp}tp_to_onset',
+                    inner_jobs=1, band_idx_vec=band_idx,
+                    nICs=len(ic_0idx_feats), nBands=len(band_idx),
+                    nTime=pre_onset_w3_tp,
+                    ic_labels=ic_lbl_list, time_vec=time_vec, **fp))
+                exp_X[_ename] = X
+
+            # --- W3 consonant-group template ---
+            grp_tmpls_w3, _ = build_consonant_group_templates(
+                z_power_overt_smooth, y_overt, onset_tps,
+                overt_matched_0idx, band_idx,
+                pre_tp=pre_onset_w3_tp, post_tp=0)
+            est_onset_grp_w3, _, _ = estimate_covert_onsets_group(
+                z_power_covert_smooth, y_covert, grp_tmpls_w3, win_len_w3,
+                covert_matched_0idx, band_idx, pre_tp=pre_onset_w3_tp,
+                search_start=search_start_idx, search_end=search_end_bound,
+                step=args.slide_step)
+
+            for ic_tag, ic_0idx_feats, ic_lbl_list in ic_blocks:
+                _ename = f'W3_grp_tmpl_{band_name}_{ic_tag}IC_pre{W3_PRE_ONSET_MS}ms'
+                X = build_X_speech_window(
+                    z_power_covert_smooth, ic_0idx_feats, est_onset_grp_w3,
+                    pre_onset_tp=pre_onset_w3_tp, post_onset_tp=0, band_idx=band_idx)
+                pending.append(delayed(run_covert_exp)(
+                    _ename, X, y_covert, save_dir_covert, subj, cond_code,
+                    ic_set=ic_tag, band_set=band_name, feature='z_power_smooth',
+                    window=f'grp_tmpl_onset-{pre_onset_w3_tp}tp_to_onset',
+                    inner_jobs=1, band_idx_vec=band_idx,
+                    nICs=len(ic_0idx_feats), nBands=len(band_idx),
+                    nTime=pre_onset_w3_tp,
+                    ic_labels=ic_lbl_list, time_vec=time_vec, **fp))
+                exp_X[_ename] = X
 
             # for feat_band_name, feat_band_idx in band_items:
             #     for ic_tag, ic_0idx_feats, ic_lbl_list in ic_blocks:
@@ -2080,6 +2274,61 @@ def main():
                 exp_configs[_ename] = dict(
                     win_cond='W4u', band_name=band_name, band_idx=band_idx,
                     pre_tp=pre_onset_w4u_tp, post_tp=speech_window_tp)
+                exp_X[_ename] = X
+
+            # --- W4u general template ---
+            gen_tmpl_w4u, _ = build_general_template(
+                z_power_overt_smooth, onset_tps,
+                overt_matched_0idx, band_idx,
+                pre_tp=pre_onset_w4u_tp, post_tp=speech_window_tp)
+            est_onset_gen_w4u, _, _ = estimate_covert_onsets_single(
+                z_power_covert_smooth, gen_tmpl_w4u, win_len_w4u,
+                covert_matched_0idx, band_idx, pre_tp=pre_onset_w4u_tp,
+                search_start=search_start_idx, search_end=search_end_bound,
+                step=args.slide_step)
+
+            for ic_tag, ic_0idx_feats, ic_lbl_list in ic_blocks:
+                _ename = (f'W4u_gen_tmpl_{band_name}_{ic_tag}IC'
+                          f'_pre{p_star}ms_speech{speech_window_ms_label}ms')
+                X = build_X_speech_window(
+                    z_power_covert_smooth, ic_0idx_feats, est_onset_gen_w4u,
+                    pre_onset_tp=pre_onset_w4u_tp, post_onset_tp=speech_window_tp,
+                    band_idx=band_idx)
+                pending.append(delayed(run_covert_exp)(
+                    _ename, X, y_covert, save_dir_covert, subj, cond_code,
+                    ic_set=ic_tag, band_set=band_name, feature='z_power_smooth',
+                    window=f'gen_tmpl_onset-{pre_onset_w4u_tp}tp_to_onset+{speech_window_tp}tp',
+                    inner_jobs=1, band_idx_vec=band_idx,
+                    nICs=len(ic_0idx_feats), nBands=len(band_idx), nTime=nTime_w4u,
+                    ic_labels=ic_lbl_list, time_vec=time_vec, **fp))
+                exp_X[_ename] = X
+
+            # --- W4u consonant-group template ---
+            grp_tmpls_w4u, _ = build_consonant_group_templates(
+                z_power_overt_smooth, y_overt, onset_tps,
+                overt_matched_0idx, band_idx,
+                pre_tp=pre_onset_w4u_tp, post_tp=speech_window_tp)
+            est_onset_grp_w4u, _, _ = estimate_covert_onsets_group(
+                z_power_covert_smooth, y_covert, grp_tmpls_w4u, win_len_w4u,
+                covert_matched_0idx, band_idx, pre_tp=pre_onset_w4u_tp,
+                search_start=search_start_idx, search_end=search_end_bound,
+                step=args.slide_step)
+
+            for ic_tag, ic_0idx_feats, ic_lbl_list in ic_blocks:
+                _ename = (f'W4u_grp_tmpl_{band_name}_{ic_tag}IC'
+                          f'_pre{p_star}ms_speech{speech_window_ms_label}ms')
+                X = build_X_speech_window(
+                    z_power_covert_smooth, ic_0idx_feats, est_onset_grp_w4u,
+                    pre_onset_tp=pre_onset_w4u_tp, post_onset_tp=speech_window_tp,
+                    band_idx=band_idx)
+                pending.append(delayed(run_covert_exp)(
+                    _ename, X, y_covert, save_dir_covert, subj, cond_code,
+                    ic_set=ic_tag, band_set=band_name, feature='z_power_smooth',
+                    window=f'grp_tmpl_onset-{pre_onset_w4u_tp}tp_to_onset+{speech_window_tp}tp',
+                    inner_jobs=1, band_idx_vec=band_idx,
+                    nICs=len(ic_0idx_feats), nBands=len(band_idx), nTime=nTime_w4u,
+                    ic_labels=ic_lbl_list, time_vec=time_vec, **fp))
+                exp_X[_ename] = X
 
             # for feat_band_name, feat_band_idx in band_items:
             #     for ic_tag, ic_0idx_feats, ic_lbl_list in ic_blocks:
@@ -2158,6 +2407,61 @@ def main():
                 exp_configs[_ename] = dict(
                     win_cond='W4c', band_name=band_name, band_idx=band_idx,
                     pre_tp=None, post_tp=post_tp_base_w4c)
+                exp_X[_ename] = X_w4c
+
+            # --- W4c general template (all trials, group-sized windows) ---
+            gen_tmpls_w4c = build_general_template_consonant(
+                z_power_overt_smooth, onset_tps,
+                overt_matched_0idx, band_idx,
+                consonant_pre_tps, post_tp_base_w4c)
+            est_onset_gen_w4c, _, _ = estimate_covert_onsets_by_group_w4c(
+                z_power_covert_smooth, y_covert, gen_tmpls_w4c,
+                consonant_pre_tps, post_tp_base_w4c,
+                covert_matched_0idx, band_idx,
+                search_start=search_start_idx, search_end=search_end_bound,
+                step=args.slide_step)
+
+            for ic_tag, ic_0idx_feats, ic_lbl_list in ic_blocks:
+                _ename = f'W4c_gen_tmpl_{band_name}_{ic_tag}IC_total{total_win_ms_w4c}ms'
+                X_gen_w4c, _ = build_X_covert_consonant(
+                    z_power_covert_smooth, y_covert, est_onset_gen_w4c,
+                    ic_0idx_feats, band_idx, consonant_pre_tps, post_tp_base_w4c)
+                pending.append(delayed(run_covert_exp)(
+                    _ename, X_gen_w4c, y_covert, save_dir_covert, subj, cond_code,
+                    ic_set=ic_tag, band_set=band_name, feature='z_power_smooth',
+                    window=f'gen_tmpl_consonant_specific_total{total_win_ms_w4c}ms',
+                    inner_jobs=1, band_idx_vec=band_idx,
+                    nICs=len(ic_0idx_feats), nBands=len(band_idx),
+                    nTime=total_win_tp_w4c,
+                    ic_labels=ic_lbl_list, time_vec=t_vec_w4c, **fp))
+                exp_X[_ename] = X_gen_w4c
+
+            # --- W4c consonant-group template (group-level, group-sized windows) ---
+            grp_tmpls_w4c = build_consonant_group_templates_consonant(
+                z_power_overt_smooth, y_overt, onset_tps,
+                overt_matched_0idx, band_idx,
+                consonant_pre_tps, post_tp_base_w4c)
+            est_onset_grp_w4c, _, _ = estimate_covert_onsets_by_group_w4c(
+                z_power_covert_smooth, y_covert, grp_tmpls_w4c,
+                consonant_pre_tps, post_tp_base_w4c,
+                covert_matched_0idx, band_idx,
+                search_start=search_start_idx, search_end=search_end_bound,
+                step=args.slide_step)
+
+            for ic_tag, ic_0idx_feats, ic_lbl_list in ic_blocks:
+                _ename = f'W4c_grp_tmpl_{band_name}_{ic_tag}IC_total{total_win_ms_w4c}ms'
+                X_grp_w4c, _ = build_X_covert_consonant(
+                    z_power_covert_smooth, y_covert, est_onset_grp_w4c,
+                    ic_0idx_feats, band_idx, consonant_pre_tps, post_tp_base_w4c)
+                pending.append(delayed(run_covert_exp)(
+                    _ename, X_grp_w4c, y_covert, save_dir_covert, subj, cond_code,
+                    ic_set=ic_tag, band_set=band_name, feature='z_power_smooth',
+                    window=f'grp_tmpl_consonant_specific_total{total_win_ms_w4c}ms',
+                    inner_jobs=1, band_idx_vec=band_idx,
+                    nICs=len(ic_0idx_feats), nBands=len(band_idx),
+                    nTime=total_win_tp_w4c,
+                    ic_labels=ic_lbl_list, time_vec=t_vec_w4c, **fp))
+                exp_X[_ename] = X_grp_w4c
 
             # for feat_band_name, feat_band_idx in band_items:
             #     for ic_tag, ic_0idx_feats, ic_lbl_list in ic_blocks:
@@ -2255,17 +2559,12 @@ def main():
         if top_k_configs:
             run_permutation_baseline(
                 top_k_configs,
-                z_power_overt_smooth, y_overt, onset_tps,
-                z_power_covert_smooth, y_covert,
-                overt_matched_0idx, covert_matched_0idx,
-                covert_keep_0idx,
-                search_start_idx, search_end_bound, args.slide_step,
+                y_covert,
                 fp,
                 n_perms=args.n_permutations,
                 exp_results=exp_results,
+                exp_X=exp_X,
                 save_dir=save_dir_perm, subj=subj, cond_code=cond_code,
-                consonant_pre_tps=consonant_pre_tps if run_w4c else None,
-                post_tp_base_w4c=post_tp_base_w4c  if run_w4c else None,
             )
         else:
             print('  No configs found for any top-k experiment.')

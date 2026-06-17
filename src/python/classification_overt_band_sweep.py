@@ -296,7 +296,7 @@ def main():
     bad_epochs      = args.overt_bad_epochs
     ic_labels = [f'IC{ic}' for ic in keep_ics_1idx]
 
-    save_dir = os.path.join(args.output_dir, subj, cond_label, 'band_sweep')
+    save_dir = os.path.join(args.output_dir, subj, 'band_sweep')
     os.makedirs(save_dir, exist_ok=True)
 
     # -------------------------------------------------------------------
@@ -360,7 +360,7 @@ def main():
     band_items  = list(BAND_SETS.items())
     band_labels = list(BAND_SETS.keys())
 
-    figure_save_dir = os.path.join(args.output_dir, subj, cond_label, 'summary_figures')
+    figure_save_dir = os.path.join(args.output_dir, subj, 'summary_figures')
     os.makedirs(figure_save_dir, exist_ok=True)
 
     # -------------------------------------------------------------------

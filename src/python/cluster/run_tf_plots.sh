@@ -10,7 +10,7 @@
 #SBATCH --error=/scratch/st-ssfels-1/vickywx/logs_tf_plots/%x_%A_%a.err
 #SBATCH --mail-user=vickywx@student.ubc.ca
 #SBATCH --mail-type=FAIL
-#SBATCH --array=2-5
+#SBATCH --array=0-0
 
 # ---------------------------------------------------------------------------
 # CONFIGURE: edit subjects to run

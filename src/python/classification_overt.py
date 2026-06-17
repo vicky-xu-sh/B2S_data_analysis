@@ -175,7 +175,7 @@ def main():
     keep_ics_0idx  = [ic - 1 for ic in keep_ics_1idx] if keep_ics_1idx else None
     brain_ics_0idx = [ic - 1 for ic in brain_ics_1idx] if run_brain_exps else None
 
-    save_dir = os.path.join(args.output_dir, subj, cond_label, 'baseline_windows') 
+    save_dir = os.path.join(args.output_dir, subj, 'baseline_windows')
     os.makedirs(save_dir, exist_ok=True)
 
     print(f'\n{"="*60}\n  Subject: {subj}\n  Condition: {cond_label} ({cond_code})\n{"="*60}')

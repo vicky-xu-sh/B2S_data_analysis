@@ -455,14 +455,15 @@ def run_classifiers(name, X, y, save_dir, subj, cond,
 # ---------------------------------------------------------------------------
  
 def _save_confusion_matrix(y_true, y_pred, save_dir, title, fname):
-    os.makedirs(save_dir, exist_ok=True)
+    figures_dir = os.path.join(save_dir, 'figures')
+    os.makedirs(figures_dir, exist_ok=True)
     cm   = confusion_matrix(y_true, y_pred, labels=list(range(1, 7)))
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=SYLLABLES)
     fig, ax = plt.subplots(figsize=(7, 6))
     disp.plot(cmap=plt.cm.Blues, ax=ax, colorbar=True)
     ax.set_title(title, fontsize=9)
     plt.tight_layout()
-    fpath = os.path.join(save_dir, fname)
+    fpath = os.path.join(figures_dir, fname)
     fig.savefig(fpath, dpi=150, bbox_inches='tight')
     plt.close(fig)
     print(f"      Saved: {fpath}")
@@ -497,7 +498,11 @@ def plot_feature_importance(rf_model, nICs, nBands, nTime,
     tick_locs     = np.searchsorted(time_vector, np.arange(time_vector[0], time_vector[-1], step))
     tick_labs     = [f"{int(time_vector[i])}" for i in tick_locs]
  
-    fig, ax = plt.subplots(figsize=(14, 4))
+    figures_dir = os.path.join(save_dir, 'figures')
+    os.makedirs(figures_dir, exist_ok=True)
+
+    fig = matplotlib.figure.Figure(figsize=(14, 4))
+    ax = fig.subplots()
     bandnames = BAND_NAMES[:nBands] if band_idx_vec is None else [BAND_NAMES[i] for i in band_idx_vec]
     sns.heatmap(imp_band_time, cmap='viridis', ax=ax,
                 yticklabels=bandnames,
@@ -508,27 +513,26 @@ def plot_feature_importance(rf_model, nICs, nBands, nTime,
     ax.set_xlabel('Time (ms)')
     ax.set_ylabel('Frequency Band')
     ax.set_title(f'{subj} | {exp_name} — RF Feature Importance: Band x Time')
-    plt.tight_layout()
-    fpath = os.path.join(save_dir,
+    fig.tight_layout()
+    fpath = os.path.join(figures_dir,
         f'{subj}_{cond}_{_safe_name(exp_name)}_RF_importance_band_time.png')
     fig.savefig(fpath, dpi=150, bbox_inches='tight')
-    plt.close(fig)
     print(f"      Saved: {fpath}")
- 
+
     # IC importance bar chart
     imp_per_ic = imp_3d.mean(axis=(1, 2))
     sorted_idx = np.argsort(imp_per_ic)[::-1]
-    fig, ax    = plt.subplots(figsize=(max(8, nICs), 4))
+    fig = matplotlib.figure.Figure(figsize=(max(8, nICs), 4))
+    ax = fig.subplots()
     ax.bar(range(nICs), imp_per_ic[sorted_idx],
            tick_label=[ic_labels[i] for i in sorted_idx])
     ax.set_xlabel('Independent Component')
     ax.set_ylabel('Average Feature Importance')
     ax.set_title(f'{subj} | {exp_name} — RF Feature Importance: IC')
-    plt.tight_layout()
-    fpath = os.path.join(save_dir,
+    fig.tight_layout()
+    fpath = os.path.join(figures_dir,
         f'{subj}_{cond}_{_safe_name(exp_name)}_RF_importance_ic.png')
     fig.savefig(fpath, dpi=150, bbox_inches='tight')
-    plt.close(fig)
     print(f"      Saved: {fpath}")
  
  

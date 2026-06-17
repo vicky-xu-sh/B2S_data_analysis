@@ -589,7 +589,7 @@ def main():
     bad_epochs      = args.overt_bad_epochs
     ic_labels = [f'IC{ic}' for ic in keep_ics_1idx]
 
-    save_dir = os.path.join(args.output_dir, subj, cond_label, 'W4_sweep')
+    save_dir = os.path.join(args.output_dir, subj, 'W4_sweep')
     os.makedirs(save_dir, exist_ok=True)
 
     # -------------------------------------------------------------------
@@ -697,7 +697,7 @@ def main():
             sweep_results = joblib.Parallel(n_jobs=args.n_jobs, prefer='processes')(
                 joblib.delayed(_sweep_one)(pre_ms) for pre_ms in W4_SWEEP_MS)
 
-        figure_save_dir = os.path.join(args.output_dir, subj, cond_label, 'summary_figures')
+        figure_save_dir = os.path.join(args.output_dir, subj, 'summary_figures')
         os.makedirs(figure_save_dir, exist_ok=True)
 
         plot_W4_sweep_summary(
@@ -734,6 +734,16 @@ def main():
         print_and_save_summary(
             [r for _, r in sweep_results],
             save_dir, subj, cond_code, tag='W4_sweep')
+
+        # Save recommended pre-onsets for downstream covert pipeline
+        rec_csv = os.path.join(save_dir, f'{subj}_{cond_code}_W4_recommended_pre_onsets.csv')
+        pd.DataFrame([
+            {'param': 'best_overall_pre_onset_ms', 'value': best_overall_combined},
+            {'param': 'consonant_stop_ms',          'value': consonant_combined['velar stop']},
+            {'param': 'consonant_nasal_ms',         'value': consonant_combined['bilabial nasal']},
+            {'param': 'consonant_fricative_ms',     'value': consonant_combined['alveolar fricative']},
+        ]).to_csv(rec_csv, index=False)
+        print(f'  Recommended pre-onsets saved: {rec_csv}')
 
     # -------------------------------------------------------------------
     # Print recommendation
