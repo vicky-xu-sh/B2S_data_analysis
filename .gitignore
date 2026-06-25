@@ -18,12 +18,18 @@ data/**/*
 *.TextGrid
 *.wav
 *.mp3
+*.elc
+*.ced
 
 # Processed Data
 *.mat
 *.npy
 *.npz
 *.pkl
+
+# Figures / results data
+*.png
+results/*.csv
 
 # ==========================================
 # HIGH PERFORMANCE COMPUTING (HPC/Slurm)
@@ -39,6 +45,7 @@ data/**/*
 *.asv
 *.mex*
 *.slxc
+*.mat
 
 # ==========================================
 # PYTHON 
