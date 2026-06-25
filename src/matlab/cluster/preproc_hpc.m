@@ -217,29 +217,41 @@ if ~isempty(ckpt_amica1_files)
     [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
 
 else
+    if ismember(SUBJ, {'subj-03', 'subj-05', 'subj-11'})
+        fprintf('\n--- NOTE: %s has requires special handling before ICA, checking if the manual processed file exists ---\n', SUBJ);
+        manual_ckpt = fullfile(OUTPUT_DATASET_DIR, [SUBJ, '_pilot_', SPEECH_TYPE, '_', num2str(HP_CUTOFF), 'hz_hp_badchan_removed_CJ_reref_resampled_seg_removed_manualrejection.set']);
+        if exist(manual_ckpt, 'file')
+            fprintf('\n--- CHECKPOINT: Loading manually cleaned set for %s ---\n', SUBJ);
+            [folder, setname, ext] = fileparts(manual_ckpt);
+            EEG = pop_loadset('filename', [setname, '.set'], 'filepath', OUTPUT_DATASET_DIR);
+            [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
+        else
+            error('Manual cleaned file not found for %s. Please run the manual cleaning script and save the output with filename: %s', SUBJ, [SUBJ, '_pilot_', SPEECH_TYPE, '_', num2str(HP_CUTOFF), 'hz_hp_badchan_removed_CJ_reref_resampled_seg_removed_manualrejection.set']);
+        end
+    else 
+        %% =========================================================================
+        %  RE-REFERENCE + RESAMPLE
+        % ==========================================================================
 
-    %% =========================================================================
-    %  RE-REFERENCE + RESAMPLE
-    % ==========================================================================
-
-    fprintf('\n--- Re-referencing to average and resampling to 500 Hz ---\n');
-    EEG = pop_reref(EEG, []);
-    EEG = pop_resample(EEG, 500);
+        fprintf('\n--- Re-referencing to average and resampling to 500 Hz ---\n');
+        EEG = pop_reref(EEG, []);
+        EEG = pop_resample(EEG, 500);
 
 
-    %% =========================================================================
-    %  AUTOMATED BAD SEGMENT REJECTION (trim 1s from start and end)
-    % ==========================================================================
+        %% =========================================================================
+        %  AUTOMATED BAD SEGMENT REJECTION (trim 1s from start and end)
+        % ==========================================================================
 
-    fprintf('\n--- Trimming 1s from start and end ---\n');
+        fprintf('\n--- Trimming 1s from start and end ---\n');
 
-    trim_samples = floor(1 * EEG.srate);   % 1 second in samples
-    start_trim   = 1;
-    end_trim     = EEG.pnts - trim_samples;
+        trim_samples = floor(1 * EEG.srate);   % 1 second in samples
+        start_trim   = 1;
+        end_trim     = EEG.pnts - trim_samples;
 
-    EEG = eeg_eegrej(EEG, [start_trim, trim_samples; end_trim, EEG.pnts]);
+        EEG = eeg_eegrej(EEG, [start_trim, trim_samples; end_trim, EEG.pnts]);
 
-    fprintf('Trimmed samples 1-%d (start) and %d-%d (end)\n', trim_samples, end_trim, EEG.pnts);
+        fprintf('Trimmed samples 1-%d (start) and %d-%d (end)\n', trim_samples, end_trim, EEG.pnts);
+    end
 
     %% =========================================================================
     %  PCA + AMICA (Run 1)
@@ -298,46 +310,79 @@ if exist(ckpt_ics_marked, 'file')
     [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
 
 else
+    if ismember(SUBJ, {'subj-03', 'subj-05', 'subj-11'}) && strcmp(SPEECH_TYPE, 'im')
+        fprintf('\n--- NOTE: %s has requires special handling before preparing the final analysis dataset, checking if the manual processed file exists ---\n', SUBJ);
+        manual_ckpt = fullfile(OUTPUT_DATASET_DIR, [SUBJ, '_pilot_', SPEECH_TYPE, '_', num2str(HP_CUTOFF), 'hz_hp_badchan_removed_CJ_reref_resampled_seg_removed_manualrejection.set']);
+        if exist(manual_ckpt, 'file')
+            fprintf('\n--- CHECKPOINT: Loading manually cleaned set for %s ---\n', SUBJ);
+            [folder, setname, ext] = fileparts(manual_ckpt);
+            EEG = pop_loadset('filename', [setname, '.set'], 'filepath', OUTPUT_DATASET_DIR);
+            [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG);
+            fprintf('Loaded file: %s\n', [setname, '.set']);
+        else
+            error('Manual cleaned file not found for %s. Please run the manual cleaning script and save the output with filename: %s', SUBJ, [SUBJ, '_pilot_', SPEECH_TYPE, '_', num2str(HP_CUTOFF), 'hz_hp_badchan_removed_CJ_reref_resampled_seg_removed_manualrejection.set']);
+        end
 
-    fprintf('\n--- Preparing 1-150 Hz analysis dataset ---\n');
+        % now do 150 Hz low-pass filtering
+        fprintf('\n--- Preparing 1-150 Hz analysis dataset ---\n');
+        fprintf('Applying 150 Hz low-pass filter to the manually cleaned set for %s...\n', SUBJ);
+        EEG = pop_eegfiltnew(EEG, 'hicutoff', 150);
+    else 
+        fprintf('\n--- Preparing 1-150 Hz analysis dataset ---\n');
 
-    EEG = pop_eegfiltnew(EEG_orig, 1, 150);
-    EEG = pop_eegfiltnew(EEG, 'locutoff',  58, 'hicutoff',  62, 'revfilt', 1);
-    EEG = pop_eegfiltnew(EEG, 'locutoff', 118, 'hicutoff', 122, 'revfilt', 1);
-
-    if strcmp(LINE_NOISE_NOTCH_FILTER_TWICE, 'true')
-        fprintf('\n--- Applying 60 Hz line noise notch filter a second time ---\n');
+        EEG = pop_eegfiltnew(EEG_orig, 1, 150);
         EEG = pop_eegfiltnew(EEG, 'locutoff',  58, 'hicutoff',  62, 'revfilt', 1);
+        EEG = pop_eegfiltnew(EEG, 'locutoff', 118, 'hicutoff', 122, 'revfilt', 1);
+
+        if strcmp(LINE_NOISE_NOTCH_FILTER_TWICE, 'true')
+            fprintf('\n--- Applying 60 Hz line noise notch filter a second time ---\n');
+            EEG = pop_eegfiltnew(EEG, 'locutoff',  58, 'hicutoff',  62, 'revfilt', 1);
+        end
+
+        % Remove all channels absent from the ICA dataset (covers pop_clean_rawdata + any reref removals)
+        ica_labels  = {EEG_ICA.chanlocs.labels};
+        orig_labels = {EEG.chanlocs.labels};
+        removed_labels2 = setdiff(orig_labels, ica_labels, 'stable');
+        fprintf('Removing %d channel(s) to match ICA dataset: %s\n', numel(removed_labels2), strjoin(removed_labels2, ', '));
+        EEG = pop_select(EEG, 'nochannel', removed_labels2);
+
+        % Sanity check
+        if EEG_ICA.nbchan ~= EEG.nbchan
+            error('Channel count mismatch between ICA dataset (%d) and analysis dataset (%d).', EEG_ICA.nbchan, EEG.nbchan);
+        elseif ~isequal({EEG_ICA.chanlocs.labels}, {EEG.chanlocs.labels})
+            error('Channel labels or order do not match — cannot safely transfer ICA.');
+        else
+            disp('Channel count and order are consistent.');
+        end
+
+        EEG = pop_reref(EEG, []);
+        EEG = pop_resample(EEG, 500);
+
+        % Apply same bad segment rejection
+        fprintf('\n--- Trimming 1s from start and end ---\n');
+
+        trim_samples = floor(1 * EEG.srate);   % 1 second in samples
+        start_trim   = 1;
+        end_trim     = EEG.pnts - trim_samples;
+
+        EEG = eeg_eegrej(EEG, [start_trim, trim_samples; end_trim, EEG.pnts]);
+
+        fprintf('Trimmed samples 1-%d (start) and %d-%d (end)\n', trim_samples, end_trim, EEG.pnts);
+    
+        % Channel removal for these subjects is now handled automatically above via setdiff against EEG_ICA.
+        if strcmp(SUBJ, 'subj-03') % special handling for subj-03 spoken
+            fprintf('\n--- Special handling for %s: removing bad segments based on manual review ---\n', SUBJ);
+
+            EEG = eeg_eegrej( EEG, [54 123;4937 5692;63081 63430;82605 83442;157083 158349;159311 160066;224878 225807;228428 229252;238161 239116]);
+            EEG = eeg_eegrej( EEG, [1 79;3279 3591;8499 8905;64351 65002;68342 69410;88673 88813;110320 111515;124027 124514;205993 206411;221776 222554;228655 229421]);
+
+        elseif strcmp(SUBJ, 'subj-05') % special handling for subj-05 spoken
+            fprintf('\n--- Special handling for %s: removing bad segments based on manual review ---\n', SUBJ);
+
+            EEG = eeg_eegrej( EEG, [30500 31475;118145 119828;123342 124201;127257 127803;150419 151591;176608 177281;221683 225164;237103 238339]);
+            
+        end
     end
-
-    % Remove the same bad channels as in the HP-filtered dataset
-    removed_chans2 = EEG.chanlocs(~EEG_ICA.etc.clean_channel_mask);
-    removed_labels2 = {removed_chans2.labels};
-    EEG = pop_select(EEG, 'nochannel', removed_labels2);
-
-    % Sanity check
-    if EEG_ICA.nbchan ~= EEG.nbchan
-        error('Channel count mismatch between ICA dataset (%d) and analysis dataset (%d).', EEG_ICA.nbchan, EEG.nbchan);
-    elseif ~isequal({EEG_ICA.chanlocs.labels}, {EEG.chanlocs.labels})
-        error('Channel labels or order do not match — cannot safely transfer ICA.');
-    else
-        disp('Channel count and order are consistent.');
-    end
-
-    EEG = pop_reref(EEG, []);
-    EEG = pop_resample(EEG, 500);
-
-    % Apply same bad segment rejection
-    fprintf('\n--- Trimming 1s from start and end ---\n');
-
-    trim_samples = floor(1 * EEG.srate);   % 1 second in samples
-    start_trim   = 1;
-    end_trim     = EEG.pnts - trim_samples;
-
-    EEG = eeg_eegrej(EEG, [start_trim, trim_samples; end_trim, EEG.pnts]);
-
-    fprintf('Trimmed samples 1-%d (start) and %d-%d (end)\n', trim_samples, end_trim, EEG.pnts);
-
 
     %% =========================================================================
     %  TRANSFER ICA WEIGHTS + ICLABEL

@@ -2434,6 +2434,9 @@ def main():
                     nICs=len(ic_0idx_feats), nBands=len(band_idx),
                     nTime=total_win_tp_w4c,
                     ic_labels=ic_lbl_list, time_vec=t_vec_w4c, **fp))
+                exp_configs[_ename] = dict(
+                    win_cond='W4c', band_name=band_name, band_idx=band_idx,
+                    pre_tp=None, post_tp=post_tp_base_w4c)
                 exp_X[_ename] = X_gen_w4c
 
             # --- W4c consonant-group template (group-level, group-sized windows) ---
@@ -2461,6 +2464,9 @@ def main():
                     nICs=len(ic_0idx_feats), nBands=len(band_idx),
                     nTime=total_win_tp_w4c,
                     ic_labels=ic_lbl_list, time_vec=t_vec_w4c, **fp))
+                exp_configs[_ename] = dict(
+                    win_cond='W4c', band_name=band_name, band_idx=band_idx,
+                    pre_tp=None, post_tp=post_tp_base_w4c)
                 exp_X[_ename] = X_grp_w4c
 
             # for feat_band_name, feat_band_idx in band_items:
