@@ -1652,6 +1652,7 @@ def main():
     idx_0ms_overt, _ = derive_epoch_indices(times_overt)
 
     _, _, _, z_power_overt = compute_features(Z_overt, times_overt)
+    del Z_overt
 
     speech_data  = loadmat(onset_path)
     onset_times  = speech_data['onset_latencies'].squeeze()
@@ -1669,6 +1670,7 @@ def main():
 
     print(f'  Smoothing overt (LP {LP_CUTOFF_HZ} Hz)...')
     z_power_overt_smooth = lowpass_smooth(z_power_overt)
+    del z_power_overt
 
     # Sample indices for onset/offset
     onset_tps  = np.rint(onset_times  / 1000 * FS + idx_0ms_overt).astype(int)
@@ -1707,6 +1709,7 @@ def main():
     idx_0ms_covert, idx_1950ms_covert = derive_epoch_indices(times_covert)
 
     _, _, _, z_power_covert = compute_features(Z_covert, times_covert)
+    del Z_covert
 
     if len(args.covert_bad_epochs) > 0:
         print(f'  Rejecting {len(args.covert_bad_epochs)} covert bad epoch(s): '
@@ -1718,6 +1721,7 @@ def main():
 
     print(f'  Smoothing covert (LP {LP_CUTOFF_HZ} Hz)...')
     z_power_covert_smooth = lowpass_smooth(z_power_covert)
+    del z_power_covert
 
     y_covert = np.array(labels_covert).astype(int)
     n_covert = len(y_covert)
@@ -1966,6 +1970,11 @@ def main():
     exp_configs = {}   # exp_name → config dict
     exp_X       = {}   # exp_name → feature matrix X (for label permutation test)
 
+    # Pre-create IC importance CSV with header so parallel threads only ever append
+    ic_imp_csv = os.path.join(save_dir_covert, f'{subj}_{cond_code}_RF_importance_ic_all_exps.csv')
+    pd.DataFrame(columns=['experiment', 'rank', 'ic_label', 'importance']).to_csv(
+        ic_imp_csv, index=False)
+
     # ------------------------------------------------------------------
     # W2: speech window [onset, onset + N]
     # ------------------------------------------------------------------
@@ -1993,10 +2002,20 @@ def main():
                   f'min={np.min(peak_corrs):.3f}  '
                   f'max={np.max(peak_corrs):.3f}')
 
+            onset_ms_w2 = (est_onset_tps - idx_0ms_covert) / FS * 1000
             print(f'  Estimated covert articulation onsets (ms from stimulus onset): '
-                  f'mean={np.mean(est_onset_tps - idx_0ms_covert) / FS * 1000:.1f}  '
-                  f'min={np.min(est_onset_tps - idx_0ms_covert) / FS * 1000:.1f}  '
-                  f'max={np.max(est_onset_tps - idx_0ms_covert) / FS * 1000:.1f}')
+                  f'mean={np.mean(onset_ms_w2):.1f}  '
+                  f'min={np.min(onset_ms_w2):.1f}  '
+                  f'max={np.max(onset_ms_w2):.1f}')
+
+            if band_name == 'high_gamma':
+                pd.DataFrame({
+                    'trial':              range(len(y_covert)),
+                    'label':              y_covert,
+                    'estimated_onset_ms': onset_ms_w2,
+                    'peak_corr':          peak_corrs,
+                }).to_csv(os.path.join(save_dir_covert,
+                    f'{subj}_{cond_code}_W2_high_gamma_estimated_onsets.csv'), index=False)
 
             time_vec = np.arange(0, speech_window_tp) / FS * 1000
 
@@ -2047,6 +2066,9 @@ def main():
                     nICs=len(ic_0idx_feats), nBands=len(band_idx),
                     nTime=speech_window_tp,
                     ic_labels=ic_lbl_list, time_vec=time_vec, **fp))
+                exp_configs[_ename] = dict(
+                    win_cond='W2', band_name=band_name, band_idx=band_idx,
+                    pre_tp=0, post_tp=speech_window_tp)
                 exp_X[_ename] = X
 
             # --- W2 consonant-group template (3 templates) ---
@@ -2075,6 +2097,9 @@ def main():
                     nICs=len(ic_0idx_feats), nBands=len(band_idx),
                     nTime=speech_window_tp,
                     ic_labels=ic_lbl_list, time_vec=time_vec, **fp))
+                exp_configs[_ename] = dict(
+                    win_cond='W2', band_name=band_name, band_idx=band_idx,
+                    pre_tp=0, post_tp=speech_window_tp)
                 exp_X[_ename] = X
 
             # for feat_band_name, feat_band_idx in band_items:
@@ -2121,10 +2146,20 @@ def main():
                   f'min={np.min(peak_corrs):.3f}  '
                   f'max={np.max(peak_corrs):.3f}')
 
+            onset_ms_w3 = (est_onset_tps - idx_0ms_covert) / FS * 1000
             print(f'  Estimated covert articulation onsets (ms from stimulus onset): '
-                  f'mean={np.mean(est_onset_tps - idx_0ms_covert) / FS * 1000:.1f}  '
-                  f'min={np.min(est_onset_tps - idx_0ms_covert) / FS * 1000:.1f}  '
-                  f'max={np.max(est_onset_tps - idx_0ms_covert) / FS * 1000:.1f}')
+                  f'mean={np.mean(onset_ms_w3):.1f}  '
+                  f'min={np.min(onset_ms_w3):.1f}  '
+                  f'max={np.max(onset_ms_w3):.1f}')
+
+            if band_name == 'high_gamma':
+                pd.DataFrame({
+                    'trial':              range(len(y_covert)),
+                    'label':              y_covert,
+                    'estimated_onset_ms': onset_ms_w3,
+                    'peak_corr':          peak_corrs,
+                }).to_csv(os.path.join(save_dir_covert,
+                    f'{subj}_{cond_code}_W3_high_gamma_estimated_onsets.csv'), index=False)
 
             time_vec = np.arange(-pre_onset_w3_tp, 0) / FS * 1000
 
@@ -2173,6 +2208,9 @@ def main():
                     nICs=len(ic_0idx_feats), nBands=len(band_idx),
                     nTime=pre_onset_w3_tp,
                     ic_labels=ic_lbl_list, time_vec=time_vec, **fp))
+                exp_configs[_ename] = dict(
+                    win_cond='W3', band_name=band_name, band_idx=band_idx,
+                    pre_tp=pre_onset_w3_tp, post_tp=0)
                 exp_X[_ename] = X
 
             # --- W3 consonant-group template ---
@@ -2199,6 +2237,9 @@ def main():
                     nICs=len(ic_0idx_feats), nBands=len(band_idx),
                     nTime=pre_onset_w3_tp,
                     ic_labels=ic_lbl_list, time_vec=time_vec, **fp))
+                exp_configs[_ename] = dict(
+                    win_cond='W3', band_name=band_name, band_idx=band_idx,
+                    pre_tp=pre_onset_w3_tp, post_tp=0)
                 exp_X[_ename] = X
 
             # for feat_band_name, feat_band_idx in band_items:
@@ -2301,6 +2342,9 @@ def main():
                     inner_jobs=1, band_idx_vec=band_idx,
                     nICs=len(ic_0idx_feats), nBands=len(band_idx), nTime=nTime_w4u,
                     ic_labels=ic_lbl_list, time_vec=time_vec, **fp))
+                exp_configs[_ename] = dict(
+                    win_cond='W4u', band_name=band_name, band_idx=band_idx,
+                    pre_tp=pre_onset_w4u_tp, post_tp=speech_window_tp)
                 exp_X[_ename] = X
 
             # --- W4u consonant-group template ---
@@ -2328,6 +2372,9 @@ def main():
                     inner_jobs=1, band_idx_vec=band_idx,
                     nICs=len(ic_0idx_feats), nBands=len(band_idx), nTime=nTime_w4u,
                     ic_labels=ic_lbl_list, time_vec=time_vec, **fp))
+                exp_configs[_ename] = dict(
+                    win_cond='W4u', band_name=band_name, band_idx=band_idx,
+                    pre_tp=pre_onset_w4u_tp, post_tp=speech_window_tp)
                 exp_X[_ename] = X
 
             # for feat_band_name, feat_band_idx in band_items:
@@ -2382,10 +2429,24 @@ def main():
                   f'min={np.min(peak_corrs_c):.3f}  '
                   f'max={np.max(peak_corrs_c):.3f}')
 
+            onset_ms = (est_onset_tps_c - idx_0ms_covert) / FS * 1000
             print(f'  Estimated consonant-group-specific covert articulation onsets (ms from stimulus onset): '
-                  f'mean={np.mean(est_onset_tps_c - idx_0ms_covert) / FS * 1000:.1f}  '
-                  f'min={np.min(est_onset_tps_c - idx_0ms_covert) / FS * 1000:.1f}  '
-                  f'max={np.max(est_onset_tps_c - idx_0ms_covert) / FS * 1000:.1f}')
+                  f'mean={np.mean(onset_ms):.1f}  '
+                  f'min={np.min(onset_ms):.1f}  '
+                  f'max={np.max(onset_ms):.1f}')
+
+            # Save per-trial estimated onset times
+            onset_df = pd.DataFrame({
+                'trial':              range(len(y_covert)),
+                'label':              y_covert,
+                'estimated_onset_ms': onset_ms,
+                'peak_corr':          peak_corrs_c,
+            })
+            onset_csv = os.path.join(
+                save_dir_covert,
+                f'{subj}_{cond_code}_W4c_{band_name}_estimated_onsets.csv')
+            onset_df.to_csv(onset_csv, index=False)
+            print(f'  Saved estimated onsets → {onset_csv}')
 
             for ic_tag, ic_0idx_feats, ic_lbl_list in ic_blocks:
                 _ename = f'W4c_est_with_{band_name}_{ic_tag}IC_total{total_win_ms_w4c}ms'

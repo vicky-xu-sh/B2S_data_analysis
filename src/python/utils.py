@@ -534,6 +534,15 @@ def plot_feature_importance(rf_model, nICs, nBands, nTime,
         f'{subj}_{cond}_{_safe_name(exp_name)}_RF_importance_ic.png')
     fig.savefig(fpath, dpi=150, bbox_inches='tight')
     print(f"      Saved: {fpath}")
+
+    # Append IC importance to per-subject CSV (one file for all experiments)
+    per_subj_csv = os.path.join(save_dir, f'{subj}_{cond}_RF_importance_ic_all_exps.csv')
+    rows = [{'experiment': exp_name, 'rank': r + 1,
+             'ic_label': ic_labels[sorted_idx[r]],
+             'importance': float(imp_per_ic[sorted_idx[r]])}
+            for r in range(nICs)]
+    write_header = not os.path.exists(per_subj_csv)
+    pd.DataFrame(rows).to_csv(per_subj_csv, mode='a', index=False, header=write_header)
  
  
 # ---------------------------------------------------------------------------
