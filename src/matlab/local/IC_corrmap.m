@@ -1,9 +1,49 @@
 %% =========================================================================
 %  CONFIGURATION — update paths and subject info
 % ==========================================================================
-SUBJ            = 'subj-02';
-OVERT_KEEP_ICS  = [2 3 4 5 7 12 14 20 21 22 23 26 27 28 29 30 31 32 33 36 38];
-COVERT_KEEP_ICS = [3 4 5 7 13 14 15 16 18 19 20 22 23 24 25 28 29 34 36 39 42 46];
+
+% SUBJ = 'subj-01';
+% OVERT_KEEP_ICS  = [3 4 5 6 10 13 18 19 20 21];
+% COVERT_KEEP_ICS = [1 2 3 4 5 6 7 9 12 13 15 18 20 21 23 24 25 27];
+
+% SUBJ            = 'subj-02';
+% OVERT_KEEP_ICS  = [2 3 4 5 7 12 14 20 21 22 23 26 27 28 29 30 31 32 33 36 38];
+% COVERT_KEEP_ICS = [3 4 5 7 13 14 15 16 18 19 20 22 23 24 25 28 29 34 36 39 42 46];
+
+% SUBJ            = 'subj-03';
+% OVERT_KEEP_ICS  = [3 6 16 19 21 31];
+% COVERT_KEEP_ICS = [4 5 8 9 10 16 17 22 35 43];
+
+% SUBJ            = 'subj-04';
+% OVERT_KEEP_ICS  = [1 2 3 5 6 7 8 10 15 17 18 20 22 23 24 25];
+% COVERT_KEEP_ICS = [1 2 3 4 5 7 8 10 11 12 15 17 24];
+
+% SUBJ            = 'subj-05';
+% OVERT_KEEP_ICS  = [4 16 17 19 20 21 22 25 34 39 46 48];
+% COVERT_KEEP_ICS = [2 3 10 11 14 17 18 20 23 25 28 29 30];
+
+% SUBJ = 'subj-06';
+% OVERT_KEEP_ICS  = [2 3 4 5 8 9 10 11 12 13 14 15 16 17 24 29 30 31 32 33 34 36 37 39 40 42 44 45 48 49 50 53];
+% COVERT_KEEP_ICS = [2 3 4 5 6 7 8 9 10 12 13 17 18 20 22 27 30 41];
+% 
+% SUBJ = 'subj-07';
+% OVERT_KEEP_ICS  = [1 2 3 4 9 11 13 15 21 25 26 30 31 35];
+% COVERT_KEEP_ICS = [2 4 6 8 9 10 11 12 13 14 18 21 22 23 26 32 35 36 38 39 40 42 44 46];
+% 
+% SUBJ = 'subj-08';
+% OVERT_KEEP_ICS  = [5 6 7 11 12 13 18 19 22 24 28];
+% COVERT_KEEP_ICS = [2 5 6 11 13 14 15 16 18 25 27 29 34 38 41];
+
+SUBJ = 'subj-11';
+OVERT_KEEP_ICS  = [5 11 16 17 19 25 27];
+COVERT_KEEP_ICS = [1 2 4 5 6 7 10 11 12 13 15 18 21 22 29 30 31 32 36 38];
+% 
+% SUBJ = 'subj-12';
+% OVERT_KEEP_ICS  = [1 2 3 4 7 8 13 14 15 19 22 24 25 26 29 30 31 35];
+% COVERT_KEEP_ICS = [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 17 19 24 25 26 27 34 36 38 39 40 45];
+
+
+
 CORRMAP_THRESH  = 0.6;   % topology correlation threshold
 
 BASE_PATH     = '/Users/vickyxu/Desktop/B2S/B2S_data_analysis/data';
@@ -134,40 +174,51 @@ fprintf('Template: study set %d (covert) | Target: study set %d (subsetted overt
 
 for i = 1:length(COVERT_KEEP_ICS)
     template_ic = COVERT_KEEP_ICS(i);
-
     fprintf('  Testing covert IC %d (%d/%d)...\n', ...
         template_ic, i, length(COVERT_KEEP_ICS));
 
     try
         CORRMAP = corrmap(STUDY, ALLEEG, TEMPLATE_SET_NUM, template_ic, ...
             'th',            num2str(CORRMAP_THRESH), ...
-            'ics',           1, ...       % max 1 match per dataset
+            'ics',           2, ...       % return up to 2 matches per dataset
             'resetclusters', 'off', ...
             'pl',            'none');
 
+        if ~isfield(CORRMAP, 'corr') || isempty(CORRMAP.corr.sets{1})
+            fprintf('    → No match above threshold\n');
+            continue;
+        end
+
         matched_sets = CORRMAP.corr.sets{1};
         matched_ics  = CORRMAP.corr.ics{1};
+        matched_corr = CORRMAP.corr.abs_values{1};
 
-        overt_match_idx = find(matched_sets == TARGET_SET_NUM);
+        % Filter to overt set and above threshold
+        valid = (matched_sets == TARGET_SET_NUM) & (matched_corr >= CORRMAP_THRESH);
+        matched_ics  = matched_ics(valid);
+        matched_corr = matched_corr(valid);
 
-        if ~isempty(overt_match_idx)
-            % Raw index within subsetted overt dataset (1..N)
-            matched_sub_idx = matched_ics(overt_match_idx);
+        if isempty(matched_ics)
+            fprintf('    → No match above threshold in overt set\n');
+            continue;
+        end
 
-            % Remap to original IC number in full overt dataset
+        % Sort by correlation descending, take top 2
+        [sorted_corr, order] = sort(matched_corr, 'descend');
+        sorted_ics = matched_ics(order);
+        n_report = min(2, length(sorted_ics));
+
+        for r = 1:n_report
+            matched_sub_idx   = sorted_ics(r);
             original_overt_ic = overt_ic_map(matched_sub_idx);
 
             overt_matched_ics_sub = [overt_matched_ics_sub, matched_sub_idx];
             overt_matched_ics     = [overt_matched_ics,     original_overt_ic];
             covert_matched_ics    = [covert_matched_ics,    template_ic];
-            match_correlations    = [match_correlations, ...
-                CORRMAP.corr.abs_values{1}(overt_match_idx)];
+            match_correlations    = [match_correlations,    sorted_corr(r)];
 
-            fprintf('    → Match: covert IC %d ↔ overt IC %d  (subset idx=%d, corr=%.3f)\n', ...
-                template_ic, original_overt_ic, matched_sub_idx, ...
-                CORRMAP.corr.abs_values{1}(overt_match_idx));
-        else
-            fprintf('    → No match above threshold\n');
+            fprintf('    → Rank %d: covert IC %d ↔ overt IC %d  (corr=%.3f)\n', ...
+                r, template_ic, original_overt_ic, sorted_corr(r));
         end
 
     catch ME
@@ -176,34 +227,62 @@ for i = 1:length(COVERT_KEEP_ICS)
 end
 
 %% =========================================================================
-%  Print and save match summary
+%  Print and save match summary (sorted by correlation, highest → lowest)
 % ==========================================================================
 fprintf('\n========================================================\n');
-fprintf('  CORRMAP RESULTS — %s  (threshold = %.2f)\n', SUBJ, CORRMAP_THRESH);
+fprintf('  CORRMAP RESULTS — %s  (threshold = %.2f, up to 2 matches per covert IC)\n', SUBJ, CORRMAP_THRESH);
 fprintf('========================================================\n');
 fprintf('  Total covert ICs tested:  %d\n', length(COVERT_KEEP_ICS));
-fprintf('  Matches found:            %d\n', length(covert_matched_ics));
+fprintf('  Covert ICs with ≥1 match: %d\n', length(unique(covert_matched_ics)));
+fprintf('  Total match entries:      %d\n', length(covert_matched_ics));
 fprintf('\n');
-fprintf('  %-15s %-22s %-15s\n', 'Covert IC', 'Overt IC (original)', 'Correlation');
-fprintf('  %s\n', repmat('-', 1, 54));
+
+% Compute rank within each covert IC BEFORE sorting (matches are pushed
+% in correlation-descending order per covert IC, so consecutive same-IC
+% entries are already correctly ranked 1, 2, ...)
+ranks       = zeros(1, length(covert_matched_ics));
+prev_covert = -1;
+rank        = 0;
 for i = 1:length(covert_matched_ics)
-    fprintf('  %-15d %-22d %.3f\n', ...
-        covert_matched_ics(i), overt_matched_ics(i), match_correlations(i));
+    if covert_matched_ics(i) ~= prev_covert
+        rank        = 1;
+        prev_covert = covert_matched_ics(i);
+    else
+        rank = rank + 1;
+    end
+    ranks(i) = rank;
 end
 
-fprintf('\n  → Visually verify each matched pair in EEGLAB.\n');
-fprintf('    Enter final matches into subject_config.csv.\n');
+% Sort all entries by correlation descending
+[~, sort_order]       = sort(match_correlations, 'descend');
+covert_sorted         = covert_matched_ics(sort_order);
+overt_sorted          = overt_matched_ics(sort_order);
+overt_sub_sorted      = overt_matched_ics_sub(sort_order);
+corr_sorted           = match_correlations(sort_order);
+ranks_sorted          = ranks(sort_order);
+
+% Print
+fprintf('  %-12s %-6s %-22s %-12s\n', 'Covert IC', 'Rank', 'Overt IC (original)', 'Correlation');
+fprintf('  %s\n', repmat('-', 1, 56));
+for i = 1:length(covert_sorted)
+    fprintf('  %-12d %-6d %-22d %.3f\n', ...
+        covert_sorted(i), ranks_sorted(i), overt_sorted(i), corr_sorted(i));
+end
+
+fprintf('\n  → For covert ICs with 2 matches, visually compare scalp topographies\n');
+fprintf('    in EEGLAB before selecting the final match.\n');
+fprintf('    Enter chosen matches into subject_config.csv.\n');
 fprintf('========================================================\n\n');
 
-% Save CSV — includes both original IC numbers and subset indices for traceability
-output_dir  = fullfile(BASE_PATH, '04_processed');
+% Save CSV (same sorted order)
+output_dir  = fullfile(BASE_PATH, '06_corrmap_IC_match');
 output_file = fullfile(output_dir, [SUBJ, '_corrmap_matches.csv']);
 fid = fopen(output_file, 'w');
-fprintf(fid, 'covert_ic,overt_ic_original,overt_ic_subset_idx,correlation\n');
-for i = 1:length(covert_matched_ics)
-    fprintf(fid, '%d,%d,%d,%.4f\n', ...
-        covert_matched_ics(i), overt_matched_ics(i), ...
-        overt_matched_ics_sub(i), match_correlations(i));
+fprintf(fid, 'covert_ic,rank,overt_ic_original,overt_ic_subset_idx,correlation\n');
+for i = 1:length(covert_sorted)
+    fprintf(fid, '%d,%d,%d,%d,%.4f\n', ...
+        covert_sorted(i), ranks_sorted(i), overt_sorted(i), ...
+        overt_sub_sorted(i), corr_sorted(i));
 end
 fclose(fid);
 fprintf('  Match table saved: %s\n\n', output_file);
