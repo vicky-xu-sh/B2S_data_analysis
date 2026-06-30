@@ -1434,6 +1434,238 @@ def analysis_w4c_windows():
 
 
 # ---------------------------------------------------------------------------
+# Analysis — Estimated covert onset distributions
+# ---------------------------------------------------------------------------
+
+def analysis_estimated_onsets():
+    print_section("Analysis — Estimated covert onset distributions")
+
+    CONDITIONS = [
+        "W4c_high_gamma",
+        "W4c_wide_gamma",
+        "W4c_beta",
+        "W2_high_gamma",
+        "W3_high_gamma",
+    ]
+
+    def load_onsets(subj, cond):
+        path = (RESULTS_DIR / subj / "covert_classification"
+                / f"{subj}_im_{cond}_estimated_onsets.csv")
+        return pd.read_csv(path)
+
+    # ----------------------------------------------------------------
+    # Per-subject mean onset and within-subject SD per condition
+    # ----------------------------------------------------------------
+    means = {c: [] for c in CONDITIONS}
+    wsds  = {c: [] for c in CONDITIONS}   # within-subject SD
+
+    for subj in SUBJECTS:
+        for cond in CONDITIONS:
+            df = load_onsets(subj, cond)
+            means[cond].append(df["estimated_onset_ms"].mean())
+            wsds[cond].append(df["estimated_onset_ms"].std(ddof=1))
+
+    print("\n  Per-subject mean estimated onset (ms from stimulus onset)\n")
+    hdr = f"  {'Subject':<10}" + "".join(f"  {c:>17}" for c in CONDITIONS)
+    print(hdr)
+    print("  " + "-" * (10 + 19 * len(CONDITIONS)))
+    for i, subj in enumerate(SUBJECTS):
+        row = f"  {subj:<10}" + "".join(f"  {means[c][i]:>17.1f}" for c in CONDITIONS)
+        print(row)
+    print("  " + "-" * (10 + 19 * len(CONDITIONS)))
+    grp_means = [np.mean(means[c]) for c in CONDITIONS]
+    grp_sds   = [np.std(means[c], ddof=1) for c in CONDITIONS]
+    print(f"  {'Mean':<10}" + "".join(f"  {m:>17.1f}" for m in grp_means))
+    print(f"  {'SD':<10}" + "".join(f"  {s:>17.1f}" for s in grp_sds))
+
+    print("\n  Within-subject SD of onset (ms) — trial-to-trial variability\n")
+    print(hdr)
+    print("  " + "-" * (10 + 19 * len(CONDITIONS)))
+    for i, subj in enumerate(SUBJECTS):
+        row = f"  {subj:<10}" + "".join(f"  {wsds[c][i]:>17.1f}" for c in CONDITIONS)
+        print(row)
+    print("  " + "-" * (10 + 19 * len(CONDITIONS)))
+    wsd_grp_means = [np.mean(wsds[c]) for c in CONDITIONS]
+    print(f"  {'Mean':<10}" + "".join(f"  {m:>17.1f}" for m in wsd_grp_means))
+
+    # ----------------------------------------------------------------
+    # Friedman across conditions + pairwise Wilcoxon (Bonferroni)
+    # ----------------------------------------------------------------
+    print("\n  Friedman test across conditions (onset means):")
+    mat = np.array([means[c] for c in CONDITIONS]).T   # [N_subj x N_cond]
+    stat, p = stats.friedmanchisquare(*[mat[:, j] for j in range(len(CONDITIONS))])
+    print(f"  χ² = {stat:.3f},  p = {p:.4f}")
+
+    n_pairs = len(CONDITIONS) * (len(CONDITIONS) - 1) // 2
+    print(f"\n  Pairwise Wilcoxon (Bonferroni n={n_pairs}):")
+    print(f"  {'Pair':<38} {'W':>6}  {'p':>8}  {'p×n':>8}  sig")
+    print(f"  {'-'*65}")
+    for i, ca in enumerate(CONDITIONS):
+        for cb in CONDITIONS[i+1:]:
+            w, p_raw = stats.wilcoxon(means[ca], means[cb])
+            p_corr = min(p_raw * n_pairs, 1.0)
+            sig = "**" if p_corr < 0.01 else ("*" if p_corr < 0.05 else
+                  ("†" if p_corr < 0.10 else ""))
+            print(f"  {ca} vs {cb:<20} {w:>6.0f}  {p_raw:>8.4f}  {p_corr:>8.4f}  {sig}")
+
+    # ----------------------------------------------------------------
+    # Spearman correlation matrix across conditions (per-subject means)
+    # ----------------------------------------------------------------
+    print("\n  Spearman ρ between per-subject mean onsets:\n")
+    print(f"  {'':>17}" + "".join(f"  {c:>17}" for c in CONDITIONS))
+    for ca in CONDITIONS:
+        row = f"  {ca:>17}"
+        for cb in CONDITIONS:
+            if ca == cb:
+                row += f"  {'—':>17}"
+            else:
+                rho, _ = stats.spearmanr(means[ca], means[cb])
+                row += f"  {rho:>17.3f}"
+        print(row)
+
+    # ----------------------------------------------------------------
+    # Within-subject SD Friedman (which condition is most consistent?)
+    # ----------------------------------------------------------------
+    print("\n  Friedman test across conditions (within-subject SD — lower = more consistent):")
+    mat_sd = np.array([wsds[c] for c in CONDITIONS]).T
+    stat_sd, p_sd = stats.friedmanchisquare(*[mat_sd[:, j] for j in range(len(CONDITIONS))])
+    print(f"  χ² = {stat_sd:.3f},  p = {p_sd:.4f}")
+    ranked = sorted(zip(wsd_grp_means, CONDITIONS))
+    print("  Rank (most → least consistent): " +
+          " > ".join(f"{c}({m:.1f}ms)" for m, c in ranked))
+
+
+# ---------------------------------------------------------------------------
+# Analysis — Top-5 ICs per subject (W4c high_gamma RF importance)
+# ---------------------------------------------------------------------------
+
+DIPFIT_DIR = Path(__file__).resolve().parents[2] / "logs_dipfit_template_results"
+
+
+def _load_dipfit(subj, cond="im"):
+    """Return dict {ic_num: dk_region} from the subject's dipfit log (cond='im' or 'sp')."""
+    pattern = f"*_{subj}_{cond}_template*.out"
+    matches = sorted(DIPFIT_DIR.glob(pattern))
+    if not matches:
+        return {}
+    # pick the file with the highest job id (most recent run)
+    log_path = matches[-1]
+    regions = {}
+    in_table = False
+    for line in log_path.read_text().splitlines():
+        if line.strip().startswith("IC") and "RV" in line:
+            in_table = True
+            continue
+        if in_table and line.strip().startswith("---"):
+            continue
+        if in_table and line.strip() == "":
+            break
+        if in_table:
+            parts = line.split()
+            if len(parts) >= 6 and parts[0].isdigit():
+                ic_num = int(parts[0])
+                # DK region starts at column index 5, may be multi-word ending before AAL
+                # Format: IC RV X Y Z DK_word1 [DK_word2] [L/R] AAL_region
+                # Simplest: join everything after the 5 numeric fields, split on known AAL patterns
+                rest = " ".join(parts[5:])
+                # AAL region is the last token(s) containing underscores or "no_label_found"
+                # DK region is everything before the AAL region
+                tokens = rest.split()
+                # find where AAL starts: last run of tokens with underscores or "no_label_found"
+                aal_start = len(tokens)
+                for idx in range(len(tokens) - 1, -1, -1):
+                    if "_" in tokens[idx] or tokens[idx] == "no_label_found":
+                        aal_start = idx
+                    else:
+                        break
+                dk_region = " ".join(tokens[:aal_start]).strip() if aal_start > 0 else rest.strip()
+                regions[ic_num] = dk_region
+    return regions
+
+
+def _top5_ics(ic_csv_path, exp_name):
+    df = pd.read_csv(ic_csv_path)
+    rows = df[df["experiment"].str.contains(exp_name, regex=False)].sort_values("rank").head(5)
+    labels = rows["ic_label"].tolist()
+    while len(labels) < 5:
+        labels.append("—")
+    return labels
+
+
+def _print_ic_table(subj_labels, dipfit_map, title):
+    """Print a two-line-per-subject IC table: IC label + DK region."""
+    print(f"  {title}\n")
+    col_w = 28
+    hdr = f"  {'Subject':<10}" + "".join(f"  {f'#{i+1}':>{col_w}}" for i in range(5))
+    print(hdr)
+    print("  " + "-" * (10 + (col_w + 2) * 5))
+    for subj, labels in subj_labels:
+        regions = dipfit_map.get(subj, {})
+        ic_row  = f"  {subj:<10}"
+        reg_row = f"  {'':10}"
+        for ic_label in labels:
+            if ic_label == "—":
+                ic_row  += f"  {'—':>{col_w}}"
+                reg_row += f"  {'':>{col_w}}"
+            else:
+                try:
+                    ic_num = int(ic_label.replace("IC", ""))
+                    region = regions.get(ic_num, "n/a")
+                except ValueError:
+                    region = "n/a"
+                ic_row  += f"  {ic_label:>{col_w}}"
+                reg_row += f"  {region:>{col_w}}"
+        print(ic_row)
+        print(reg_row)
+    print()
+
+
+def analysis_top_ics():
+    print_section("Analysis — Top-5 ICs by RF importance (W4c high_gamma + per-subject best)")
+    print("  Note: IC numbers are NOT comparable across subjects (ICA solved independently).")
+    print("  DK regions from dipfit (RV < 0.15); 'n/a' = IC did not pass RV threshold.\n")
+
+    dipfit_map = {subj: _load_dipfit(subj, cond="im") for subj in SUBJECTS}
+
+    # --- Table 1: fixed experiment W4c_est_with_high_gamma ---
+    TARGET_EXP = "W4c_est_with_high_gamma_all_keepIC"
+    rows1 = []
+    for subj in SUBJECTS:
+        ic_csv = RESULTS_DIR / subj / "covert_classification" / f"{subj}_im_RF_importance_ic_all_exps.csv"
+        rows1.append((subj, _top5_ics(ic_csv, TARGET_EXP)))
+    _print_ic_table(rows1, dipfit_map, "[W4c_est_with_high_gamma — all subjects]")
+
+    # --- Table 2: per-subject best experiment ---
+    print(f"  {'Subject':<10}  {'Best experiment':<52}" + "".join(f"  {'#'+str(i+1):>28}" for i in range(5)))
+    print("  " + "-" * (10 + 54 + (30) * 5))
+    for subj in SUBJECTS:
+        df_all = load_all_exps(subj)
+        df_all = df_all[df_all["experiment"].str.contains("est_with", regex=False)]
+        df_all = df_all[~df_all["experiment"].str.contains("gen_tmpl|grp_tmpl", regex=False)]
+        df_all["mean_bal"] = (df_all["SVM_bal_acc"] + df_all["RF_bal_acc"]) / 2
+        best_exp = df_all.loc[df_all["mean_bal"].idxmax(), "experiment"]
+        ic_csv = RESULTS_DIR / subj / "covert_classification" / f"{subj}_im_RF_importance_ic_all_exps.csv"
+        labels = _top5_ics(ic_csv, best_exp)
+        regions = dipfit_map.get(subj, {})
+        ic_row  = f"  {subj:<10}  {best_exp:<52}"
+        reg_row = f"  {'':10}  {'':52}"
+        for ic_label in labels:
+            if ic_label == "—":
+                ic_row  += f"  {'—':>28}"
+                reg_row += f"  {'':>28}"
+            else:
+                try:
+                    ic_num = int(ic_label.replace("IC", ""))
+                    region = regions.get(ic_num, "n/a")
+                except ValueError:
+                    region = "n/a"
+                ic_row  += f"  {ic_label:>28}"
+                reg_row += f"  {region:>28}"
+        print(ic_row)
+        print(reg_row)
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -1451,3 +1683,5 @@ if __name__ == "__main__":
     analysis_w4c_windows()
     analysis_6_feature_count(save_dir)
     report_per_subject_classifiers()
+    analysis_estimated_onsets()
+    analysis_top_ics()
