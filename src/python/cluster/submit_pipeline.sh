@@ -19,7 +19,7 @@ set -euo pipefail
 CLUSTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Defaults
-ARRAY_SPEC="0-1,3,5-7,9"   # subjects with data (skip 2=subj-03, 4=subj-05, 8=subj-11)
+ARRAY_SPEC="0-9"
 RUN_OVERT=true
 RUN_COVERT=true
 
@@ -35,7 +35,7 @@ done
 
 CONDITIONS=(
     corr0.8_rank1_brain     # other conditions (e.g. corr0.7_rank1_brain) can be added later if needed
-    corr0.8_allranks_brain
+    # corr0.8_allranks_brain
 )
 
 # ---------------------------------------------------------------------------

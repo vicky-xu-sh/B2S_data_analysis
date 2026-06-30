@@ -10,18 +10,22 @@
 #SBATCH --error=/scratch/st-ssfels-1/vickywx/logs_tf_plots/%x_%A_%a.err
 #SBATCH --mail-user=vickywx@student.ubc.ca
 #SBATCH --mail-type=FAIL
-#SBATCH --array=0
+#SBATCH --array=0-9
 
 # ---------------------------------------------------------------------------
 # CONFIGURE: edit subjects to run (update --array above to match N_SUBJ - 1)
 # ---------------------------------------------------------------------------
 SUBJECTS=(
+    "subj-01"
     "subj-02"
     "subj-03"
     "subj-04"
     "subj-05"
     "subj-06"
     "subj-07"
+    "subj-08"
+    "subj-11"
+    "subj-12"
 )
 
 CONFIG_CSV=/scratch/st-ssfels-1/vickywx/B2S_data_analysis/subject_config.csv
@@ -79,6 +83,12 @@ OVERT_BAD=$(echo "${OVERT_ROW}"   | cut -d'|' -f1)
 OVERT_ICS=$(echo "${OVERT_ROW}"   | cut -d'|' -f2)
 COVERT_BAD=$(echo "${COVERT_ROW}" | cut -d'|' -f1)
 COVERT_ICS=$(echo "${COVERT_ROW}" | cut -d'|' -f2)
+
+# Treat literal "None" from CSV as empty (no bad epochs / no ICs specified)
+[[ "${OVERT_BAD}"  == "None" ]] && OVERT_BAD=""
+[[ "${COVERT_BAD}" == "None" ]] && COVERT_BAD=""
+[[ "${OVERT_ICS}"  == "None" ]] && OVERT_ICS=""
+[[ "${COVERT_ICS}" == "None" ]] && COVERT_ICS=""
 
 # ---------------------------------------------------------------------------
 # Environment setup
